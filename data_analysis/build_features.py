@@ -70,13 +70,13 @@ def construir_features_robustas():
     panel = panel.sort_values(['company_id', 'year_month'])
 
     print("Calculando Base 3: Tendencias Temporales (Suavizado de Baches)...")
-    # NUEVO: Medias Móviles de 3 meses (El corazón de la "Trayectoria")
+    # Medias Móviles de 3 meses (El corazón de la "Trayectoria")
     # Nos permite saber si un mes malo es un bache (media de 3 meses sigue bien) o una caída
     panel['flujo_neto_3m_avg'] = panel.groupby('company_id')['flujo_neto'].transform(lambda x: x.rolling(window=3, min_periods=1).mean())
     panel['impagos_prov_3m_avg'] = panel.groupby('company_id')['pct_impagos_prov'].transform(lambda x: x.rolling(window=3, min_periods=1).mean())
     panel['clientes_morosos_3m_avg'] = panel.groupby('company_id')['pct_clientes_morosos'].transform(lambda x: x.rolling(window=3, min_periods=1).mean())
     
-    # NUEVO: Indicador de Deterioro Rápido (Delta vs mes anterior)
+    # Indicador de Deterioro Rápido (Delta vs mes anterior)
     # ¿Ha empeorado mucho respecto al mes pasado?
     panel['cambio_burn_rate'] = panel.groupby('company_id')['burn_rate'].diff().fillna(0)
     

@@ -3,7 +3,7 @@ import os
 
 def explorar_balances_y_deuda():
     data_path = "data/"
-    reporte = ["=== RESUMEN EXPLORATORIO V3: CAJA, DEUDA Y MOROSIDAD ===\n"]
+    reporte = ["=== RESUMEN EXPLORATORIO: CAJA, DEUDA Y MOROSIDAD ===\n"]
 
     try:
         balances = pd.read_csv(os.path.join(data_path, "balances.csv"))
