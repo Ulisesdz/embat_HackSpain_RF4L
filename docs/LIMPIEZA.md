@@ -64,12 +64,10 @@ Política final:
 2. **Entre empresas**, el score compara ratios y percentiles de ratios, nunca
    euros absolutos. Una pyme en MXN y un grupo en EUR son comparables.
 3. **No se inventa un tipo hacia EUR** para transacciones ni saldos.
-4. El otro enfoque del equipo trabajaba solo en moneda local y descartaba el
-   tipo. En transacciones tenían razón. En facturas, convertir a
-   `accounting_currency` con cota es más preciso que no convertir: si no, una
-   empresa mezcla USD y EUR en el mismo ratio de morosidad.
+4. **Facturas sí se convierten** a `accounting_currency` si el tipo está en
+   rango. Si no, una empresa mezcla USD y EUR en el mismo ratio de morosidad.
 
-## 3. Qué no se copia (parece limpieza y es look-ahead)
+## 3. Qué no se hace (parece limpieza y rompe el score)
 
 | Idea | Por qué no |
 |---|---|

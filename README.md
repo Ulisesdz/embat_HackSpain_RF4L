@@ -8,8 +8,8 @@ a mes**, con explicación y sin caja negra.
 src/          código (paquete Python)
 data/         CSV crudos + salidas en data/features/
 model/        percentiles y prior congelados (viajan con el sistema)
-dashboard/    demo navegable (un HTML, sin servidor)
-docs/         diccionario, motor, limpieza
+dashboard/    demo navegable (un HTML)
+docs/         diccionario, motor, limpieza, teoría del agente
 ```
 
 ---
@@ -18,11 +18,11 @@ docs/         diccionario, motor, limpieza
 
 | Si quieres saber... | Lee |
 |---|---|
-| Qué se entrega y a quién se vende | [`ENTREGA_PRODUCTO.md`](ENTREGA_PRODUCTO.md) |
-| Limpieza, fechas rotas y **moneda** | [`docs/LIMPIEZA.md`](docs/LIMPIEZA.md) |
+| Qué se entrega y qué pinta el producto | [`ENTREGA_PRODUCTO.md`](ENTREGA_PRODUCTO.md) |
 | Cómo se calcula el score | [`docs/SCORE_ENGINE.md`](docs/SCORE_ENGINE.md) |
-| Qué es cada variable | [`docs/FEATURES.md`](docs/FEATURES.md) |
-| Pipeline y sesgos | [`docs/README_Data_Analysis.md`](docs/README_Data_Analysis.md) |
+| Qué es cada variable del panel | [`docs/FEATURES.md`](docs/FEATURES.md) |
+| Pipeline y artefactos | [`docs/README_Data_Analysis.md`](docs/README_Data_Analysis.md) |
+| Limpieza, fechas rotas y moneda | [`docs/LIMPIEZA.md`](docs/LIMPIEZA.md) |
 
 ---
 
@@ -37,29 +37,9 @@ docs/         diccionario, motor, limpieza
 | **Por qué ha cambiado** | `motivo_cambio`, `aporte_*` | 17.744 filas-mes; solo el 5,5% lo mueve un dato nuevo, no el comportamiento |
 | **Cuándo se vio venir** | `meses_anticipacion` | Cola vs nivel: +2 meses en asfixia (56 eventos solo ella), +1 en impago |
 
-El dashboard (`dashboard/index.html`) responde las **seis preguntas** del reto
-con gráficas: mapa nivel × dirección, corrientes observadas, lista de giros
-aún sanos, y en cada ficha una curva con la dirección reciente (no es
-predicción de quiebra).
-
----
-
-## Entrega del reto
-
-| Qué pide el track | Dónde está | Estado |
-|---|---|---|
-| Puntuar empresas nunca vistas | `model/pctl_reference.json` + `prior_contraccion.json` | Obligatorio |
-| Señal en las dos direcciones | `tendencia` MEJORANDO / DETERIORANDO + monitor | Obligatorio |
-| Trayectoria, no foto | Media exponencial 25 meses + eje trayectoria 18% | Obligatorio |
-| Explicación | `score_explanations.json`, `motivo_cambio_*` | Obligatorio |
-| Producto encima del score | Lista de llamadas + monitor en `dashboard/index.html` | Obligatorio |
-| Comprador | Embat (quien entrega los datos). Usuario: riesgo / tesorería | Obligatorio |
-| Demo navegable | `dashboard/index.html` (doble clic) | Obligatorio |
-| Anticipación medida | `anticipation_report.csv` | Bonus |
-| Monitor que avisa | `data/features/alerts.csv` + pestaña Monitor | Bonus |
-
-No hay ML: no existe etiqueta de quiebra. Entrenar contra una `y` nuestra
-aprendería la heurística con ruido y perdería la explicación.
+El dashboard (`dashboard/index.html`) pinta las seis: mapa nivel × dirección,
+lista de giros aún sanos, y en cada ficha la curva con la dirección reciente.
+No es predicción de quiebra.
 
 ---
 
@@ -68,25 +48,63 @@ aprendería la heurística con ruido y perdería la explicación.
 ```bash
 pip install -r requirements.txt
 python -m src.run
-```
-
-Un solo comando: features → validador → score → anticipación → monitor → dashboard.
-Si lanzas un paso suelto: `python -m src.validate_features` (el flag es `-m`, no `3-m`).
-
-La interfaz (plan de acciones, agente, vista fondo) se abre así:
-
-```bash
 python -m src.brief_server
 ```
 
-http://127.0.0.1:8765/ — **Plan de acciones** corre ficha + RAG + catálogo sin
-red. **Agente + LLM** redacta con Gemini: pega la key de
-[aistudio.google.com](https://aistudio.google.com) en la cabecera (vale
-`AIza…` o `AQ.…`). Modelo
-`gemini-3-flash-preview` (`google-genai`). No hay batch.
+`src.run` hace features → validador → score → anticipación → monitor → dashboard.
+La interfaz se abre en http://127.0.0.1:8765/ (o el puerto que imprima).
+
+- **Plan de acciones** — ficha + RAG + catálogo, sin red.
+- **Agente + LLM** — redacta con Gemini. Pega la key de
+  [aistudio.google.com](https://aistudio.google.com) en la cabecera
+  (`AIza…` o `AQ.…`). Modelo `gemini-3-flash-preview` (`google-genai`).
 
 `evaluate_anticipation` va **después** del motor: mira al futuro de cada mes.
 Si viviera dentro, el archivo del score dejaría de ser causal.
+
+No hay ML: el dataset no trae etiqueta de quiebra. El motor es reglas medidas
+(AUC / lift sobre eventos de severidad) más Theil-Sen, percentiles y contracción
+hacia el prior. Cada número se puede explicar.
+
+---
+
+## Los seis ejes
+
+| Eje | Peso | Qué pregunta | Si falta el dato |
+|---|---|---|---|
+| Deuda comercial | 20% | ¿Paga a proveedores? (mejor predictor, AUC 0,83) | Se apaga. Nunca un 50 |
+| Liquidez | 18% | Flujo / tamaño, media 3 meses | Se apaga |
+| Colchón | 18% | Meses de gasto cubiertos por el flujo 6m; runway solo si hay foto de caja | Se apaga |
+| Trayectoria | 18% | ¿Va a mejor o a peor? Pesa por producto (AUC 0,49 sobre eventos) | Se apaga |
+| Eficiencia | 14% | Gasto / ingreso. 1,0 = equilibrio. Topado a 8× | Se apaga |
+| Cobro | 12% | ¿Le pagan a ella? Contagio, no decisión propia | Se apaga |
+
+Pesos medidos en `screen_signals.py`. Si cubren menos del 55% del peso, el mes
+es `NaN` (NO EVALUABLE).
+
+### Cómo se lee una ficha
+
+1. **`score_final`** (0–100) — media exponencial de 25 meses, contraída al prior
+   **54,41** si hay poca evidencia. Media de cartera 55,4. Umbrales:
+   SALUDABLE ≥68, ESTABLE ≥52, EN RIESGO ≥42, FRÁGIL ≥33, CRÍTICO <33.
+2. **`tendencia`** — dirección. Un 48 MEJORANDO puede ser mejor apuesta que un 62
+   DETERIORANDO. No sale del score compuesto: sale del eje trayectoria.
+3. **`confianza` / `apto_ranking`** — 47,9% de filas-mes son confianza baja
+   (primeros meses + facturas huecas). 1.169 empresas son aptas para ranking.
+4. **`motivo_cambio_ultimo_mes`** — qué eje empujó. Si va vacío, el giro fue
+   antes: se usa el texto de `naturaleza_caida`.
+5. **Grupo** — vista, no segundo cálculo. 74 de 249 grupos (29,7%) esconden una
+   filial en riesgo; 85 (34,1%) tienen tendencias opuestas dentro.
+
+No mezclar recuentos: **1.111** es alerta de nivel o cola (recall); **624** es
+giro alguna vez; **420** es la lista de llamadas (giro y `score_final` ≥ 55).
+
+### COMP_0009 (el ejemplo del log)
+
+- 2026-03: `burn_rate` = **8,0** (antes 179×; un mes así no puede mandar).
+- `runway_meses` solo en 2026-08: la foto de caja no se copia al pasado.
+- NaN en morosidad 2024-09→2025-06 = **sin evidencia**, no “paga bien”.
+- Score **60,13 ESTABLE**, giro *bache* 1,33σ desde 2025-03.
 
 ---
 
@@ -95,99 +113,23 @@ Si viviera dentro, el archivo del score dejaría de ser causal.
 No se fuerza todo a EUR. En transacciones el `exchange_rate` es 1 en el 64% de
 las cuentas no-EUR: multiplicar inventa euros. El score compara **ratios**
 (flujo/ingresos, burn, morosidad). Las facturas sí se llevan a
-`accounting_currency` cuando el tipo está en `[0,001, 2500]`. El razonamiento
-completo está en `docs/LIMPIEZA.md` §2.
+`accounting_currency` cuando el tipo está en `[0,001, 2500]`. Detalle en
+`docs/LIMPIEZA.md`.
 
 ---
 
-## Cómo se explica cada métrica
+## Entrega del reto
 
-No mezclar estos cuatro recuentos. Miden cosas distintas:
-
-| Número | Qué es | Qué no es |
-|---|---|---|
-| **1.111** alerta temprana | Capa de **nivel o cola** alguna vez activa. Recall alto (casi toda la cartera) | La lista de ventas. Avisar a 1.111 de 1.286 no prioriza |
-| **624** giro detectado | La empresa se movió contra **su propia** volatilidad | Que hoy esté sana, ni que vaya a asfixiarse (lift 0,90 ahí) |
-| **417** giro + score mensual ≥ 55 | Algún mes tuvo el giro y **ese mes** aún parecía sana | El recuento mensual del caso 82→68 |
-| **420** lista de llamadas | Giro + **`score_final` ≥ 55 ahora** | Lo que pinta el dashboard y lo que se vende |
-
-El giro no predice asfixia ni impago. Predice “esta caída se sostiene”: el bache
-rebota (+4,7 pts a 6 meses) y la caída estructural no (−1,7). Por eso van
-separados de la capa de cola.
-
-### Los seis ejes (qué leerle a un cliente)
-
-| Eje | Peso | En cristiano | Si falta el dato |
-|---|---|---|---|
-| Deuda comercial | 20% | ¿Paga a proveedores? (mejor predictor, AUC 0,83) | Se apaga. Nunca un 50 |
-| Liquidez | 18% | Flujo / tamaño, media 3 meses | Se apaga |
-| Colchón | 18% | Meses de gasto cubiertos por el flujo 6m; runway solo si hay foto de caja | Se apaga |
-| Trayectoria | 18% | ¿Va a mejor o a peor? Pesa por producto, no porque prediga (AUC 0,49) | Se apaga |
-| Eficiencia | 14% | Gasto / ingreso. 1,0 = equilibrio. Topado a 8× para que un mes loco no envenene | Se apaga |
-| Cobro | 12% | ¿Le pagan a ella? Contagio, no decisión propia | Se apaga |
-
-Pesos medidos en `screen_signals.py`, no opinados. Si cubren menos del 55% del
-peso, el mes es `NaN` (NO EVALUABLE), no un 50 inventado.
-
-### Cómo se lee una ficha
-
-1. **`score_final`** (0–100) — media exponencial de 25 meses, contraída al prior
-   **54,41** si hay poca evidencia. Media de cartera 55,4. Umbrales absolutos:
-   SALUDABLE ≥68, ESTABLE ≥52, EN RIESGO ≥42, FRÁGIL ≥33, CRÍTICO <33.
-2. **`tendencia`** — dirección. Un 48 MEJORANDO puede ser mejor apuesta que un 62
-   DETERIORANDO.
-3. **`confianza` / `apto_ranking`** — 47,9% de filas-mes son confianza baja
-   (primeros meses + facturas huecas). 1.169 empresas son aptas para ranking.
-4. **`motivo_cambio_ultimo_mes`** — qué eje empujó el último mes. Si va vacío,
-   el giro fue antes: se usa el texto de `naturaleza_caida`.
-5. **Grupo** — vista, no segundo cálculo. 74 de 249 grupos (29,7%) esconden una
-   filial en riesgo; 85 (34,1%) tienen tendencias opuestas dentro.
-
-### El ejemplo del log: COMP_0009
-
-Sale en cada corrida a propósito. Tras el tope de burn:
-
-- 2026-03: `burn_rate` = **8,0** (antes 179×; un mes así no puede mandar).
-- `runway_meses` solo en 2026-08: la foto de caja no se copia al pasado.
-- NaN en morosidad 2024-09→2025-06 = **sin evidencia**, no “paga bien”.
-- Score **60,13 ESTABLE**, giro *bache* 1,33σ desde 2025-03, visto 1 mes antes.
-  Colchón 0 y eficiencia 5 (quema); cobro 100 y deuda comercial 85 (paga).
-
-### WARN que se defienden en demo
-
-| WARN del pipeline | Por qué no se “arregla” |
+| Qué pide el track | Dónde está |
 |---|---|
-| Contraparte 48,9% / concept 6,1% | Se usa el signo. Donde hay banco, **acuerda el 93,7%** |
-| Confianza baja 47,9% | El eje se apaga. Imputar 50 hincharía a quien no tiene facturas |
-| Morosidad no fiable 65% / 57% | Mismo criterio: sin denominador de vencimiento no hay ratio |
-| No forzar EUR | El `exchange_rate` es 1 en el 64% de cuentas no-EUR; multiplicar inventa euros |
+| Puntuar empresas nunca vistas | `model/pctl_reference.json` + `prior_contraccion.json` |
+| Señal en las dos direcciones | `tendencia` MEJORANDO / DETERIORANDO |
+| Trayectoria, no foto | Media exponencial 25 meses + eje trayectoria 18% |
+| Explicación | `score_explanations.json`, `motivo_cambio_*` |
+| Producto encima del score | Lista de llamadas + monitor + plan / agente |
+| Demo navegable | `dashboard/index.html` vía `python -m src.brief_server` |
+| Anticipación medida | `anticipation_report.csv` |
+| Monitor que avisa | `data/features/alerts.csv` |
 
-No recongelar `pctl_reference.json` (sale de features, no del score). El prior
-**sí** se recalibró al corregir `bool(nan)` en `caja_negativa_flag`: 51,04 era la
-mediana de scores con un −4 fantasma en el 91% de las filas. Ahora 54,41.
-
----
-
-## Por qué no da lo mismo que el score alternativo (mateo_dev)
-
-Un compañero propone otro health score (12 métricas, 5 pilares, anclajes
-percentiles sobre un subconjunto “oro”, techos, tendencia = delta del score).
-Se auditó contra el motor y contra los CSV. **No se sustituye el score.**
-Detalle en `docs/SCORE_ENGINE.md` §13 iteración 9.
-
-| Ellos | Nosotros | Por qué no se copia |
-|---|---|---|
-| Ingreso/gasto por signo + pares ± el mismo día = interno | Caja operativa; interno = `transfer` | El 4,2% de esos pares son `collection`/`payment` reales (cobrar y pagar 1.000 el mismo día) |
-| Caja diaria reconstruida hasta una fecha REF | Snapshot solo el mes de la foto | Look-ahead. Ya se rechazó en la iteración 8 |
-| Nota 0–100 = percentil del oro | Umbral económico (burn 1,0, flujo +15%) | El cliente oye “gastáis 0,50×”, no “p90 del oro” |
-| Tendencia = media 3m − media 3m previa del *score* | Media 3m del eje trayectoria | Un dato nuevo mueve el compuesto; no es dirección. COMP_0691: +1,8 pts y flujo −35 pp/mes |
-| Cobro = `status == paid` | `pending_amount` ≈ 0 | 123.698 facturas liquidadas tienen otro status; 192.554 overdue traen `payment_date` |
-| Techo duro 45 si caja en rojo / sin ingresos | Moduladores acotados | Un techo aplasta el 82→68, que es el producto |
-| OLS a 6 meses y DSO como métrica | Theil-Sen; DSO podado | Un mes extremo invierte el OLS; DSO se solapa con stock |
-
-Lo que sí es buena idea y ya cubrimos de otra forma: ratios escala-libre,
-calibrar sin meses basura (peso cubierto + mes activo), avisar si la caja
-está en rojo (`caja_negativa_flag`), servicio de deuda todos los meses
-(modulador, 718 empresas). La cobertura de gasto ineludible (nómina / SS)
-se deja fuera: el 25% de transacciones no tiene categoría y el ratio
-mentiría.
+`model/` viaja con el sistema. Borrarlo recalibra en silencio. `data/` está en
+`.gitignore`: son el dataset y las salidas regenerables.

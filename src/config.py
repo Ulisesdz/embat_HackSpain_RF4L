@@ -134,7 +134,7 @@ EXCHANGE_RATE_MAX = 2500.0
 MIN_PESO_CUBIERTO_SCORE = 0.55
 
 # Pesos vigentes (v3). El histórico v1 → v2 → v3 y el porqué de cada movimiento
-# están en SCORE_ENGINE.md §3.1. Resumen: se fijaron DESPUÉS de medir AUC/lift.
+# están en SCORE_ENGINE.md §2. Resumen: se fijaron DESPUÉS de medir AUC/lift.
 # Deuda comercial es el predictor más fuerte (0,20). Trayectoria pesa 0,18 por
 # lo que pide el reto (dirección), no por lo que predice (AUC 0,49). El
 # apalancamiento no es eje: con 1,2% de cobertura un peso fijo bloqueaba meses.
@@ -203,7 +203,7 @@ ALERTA_MESES_SOSTENIDO = 2       # evita el falso positivo de un mes raro
 # Canales de anticipación. Los disparadores y sus pesos NO son intuición: salen
 # de medir, sobre filas donde el nivel aún es aceptable, el lift de cada señal
 # para que ocurra un evento en los 12 meses siguientes. Lo calcula
-# screen_signals.py; el detalle de cada canal está en SCORE_ENGINE.md 8.1.
+# screen_signals.py; el detalle de cada canal está en SCORE_ENGINE.md §7.
 #
 # Cada disparador es una condición de COLA (percentil adverso dentro del mes), no
 # un umbral absoluto, por dos razones: varias señales resultaron NO monótonas

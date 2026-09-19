@@ -4,10 +4,9 @@ Referencia de las columnas del panel maestro: qué mide cada una, con qué fórm
 se calcula, qué cobertura real tiene sobre el dataset y para qué sirve en el motor
 de scoring.
 
-Versión final: **69 columnas**. De 150 se podó lo que nadie leía; se adoptaron
-dos señales del otro enfoque del equipo (`refund_rate`, `debt_service`) y se
-restringió el flujo a tesorería operativa. La 69ª es `observado`: la máscara de
-limpieza. **Producto solo necesita las ~25 de `ENTREGA_PRODUCTO.md` §8.**
+Versión final: **69 columnas**. Flujo = tesorería operativa.
+`refund_rate` y `debt_service` son moduladores. `observado` es la máscara de
+ventana. **Producto lee las ~25 de `ENTREGA_PRODUCTO.md` §7.**
 
 - **Grano:** una fila por `company_id` × `year_month`. 1.286 empresas × 25 meses = 32.150 filas exactas.
 - **Ventana:** 2024-09 → 2026-09. El último bucket (2026-09) es parcial y queda fuera del score.
@@ -524,9 +523,8 @@ precisa a la más disponible. El eje solo se apaga si ninguna fuente tiene dato.
 | Eficiencia | 0,14 | `burn_rate_3m_avg` | `burn_rate` del mes | — |
 | Cobro de clientes | 0,12 | `pct_clientes_morosos_3m` | `stock_clientes_sobre_ingresos` | "ha vendido y no le deben nada vencido" |
 
-El **apalancamiento ya no es un eje**. Con 1,2% de cobertura, un peso fijo del 5%
-no penalizaba a quien estaba apalancado: bloqueaba el score de todos los demás.
-Ahora es un modulador acotado de ±8 puntos.
+El **apalancamiento no es un eje**. Con 1,2% de cobertura, un peso fijo
+bloquearía el score de casi todos los meses. Es un modulador de ±8 puntos.
 
 Un eje sin dato no se imputa a la media: se apaga y su peso se reparte entre los
 demás. Si el peso cubierto queda por debajo de `MIN_PESO_CUBIERTO_SCORE` (0,55),
@@ -548,39 +546,13 @@ Con `PESO_CONFIANZA = {alta: 1,0, media: 0,65, baja: 0,30}`. Los meses recientes
 pesan más, pero un mes antiguo con cobertura perfecta retiene influencia frente a
 uno reciente con datos dudosos.
 
-### 10.3 El cuello de botella de cobertura, y cómo se resolvió
+### 10.3 Cobertura
 
-Este apartado se conserva porque explica el problema que más condicionó el diseño
-del motor.
-
-**El diagnóstico.** El runway (18%) y el apalancamiento (5%) solo existen en **un**
-mes de 25, así que el 23% del peso estaba apagado en el 96% de las filas. Los ejes
-estructuralmente disponibles sumaban:
-
-```
-liquidez 0,22 + eficiencia 0,12 + tendencia 0,13 = 0,47  <  0,55
-```
-
-Un mes sin morosidad medible **no alcanzaba el mínimo**, aunque tuviera flujos
-perfectos. De ahí una mediana de 6 meses evaluados de 25 y 615 empresas con
-tendencia `SIN DATOS`. Sin una serie densa de scores mensuales no se puede
-demostrar anticipación, que es uno de los tres bloques de evaluación del reto.
-
-**La solución fue la cascada de §10.1**, no bajar el umbral. La diferencia importa:
-bajar `MIN_PESO_CUBIERTO_SCORE` habría tolerado la ausencia de evidencia; la
-cascada **añade** evidencia usando fuentes con más cobertura y tratando el stock
-cero como el dato informativo que es.
-
-| | Antes | Ahora |
-|---|---|---|
-| Mediana de meses evaluados | 6 | **19** |
-| Empresas NO EVALUABLE | 87 | **5** |
-| Empresas con tendencia SIN DATOS | 615 | **5** |
-| Filas-mes con score | — | 67,6% |
-| Peso cubierto medio | — | 0,685 |
-
-`MIN_PESO_CUBIERTO_SCORE` sigue en 0,55, sin tocar. Era la decisión correcta y el
-problema no estaba ahí.
+Runway y foto de deuda existen en ~1 mes de 25. Sin cascada, esos huecos
+apagaban el 23% del peso y la mediana de meses evaluados era 6. La cascada
+de §10.1 añade fuentes; el umbral sigue en 0,55. Mediana actual: **19** meses
+evaluados; 67,6% de filas-mes con score; peso cubierto medio 0,685; 6
+empresas NO EVALUABLE.
 
 ### 10.4 Sesgos declarados que siguen abiertos
 
@@ -588,11 +560,6 @@ problema no estaba ahí.
 - **Deuda sin histórico.** No se puede castigar a quien se sobreapalancó hace 12 meses; solo cuenta la foto final. Y `guarantee`/`confirming` inflan el apalancamiento por ser contingentes.
 - **Runway de mediana 0,49 meses.** Con caja mediana de 88.772 € y el gasto observado, casi toda la muestra sale con runway corto. Por eso el modulador de runway actúa **por percentil y no por umbral absoluto**: un umbral fijo penalizaría a casi toda la muestra por igual en lugar de discriminar. Sigue mereciendo revisar si `caja_real` debería incluir `liquidity` o el disponible de las líneas de crédito.
 - **Denominadores pequeños.** La mediana de facturas vencidas por mes es 0 y el p75 es 2. Con `MIN_FACTURAS_RATIO = 2`, una sola factura impagada produce un 100% de morosidad. De ahí que el p75 de los ratios esté pegado a 100.
-
-Cerrados desde versiones anteriores de este documento:
-
-- ~~Concentración de contraparte sin penalizar~~ → `top1_*_share_3m` entra como modulador acotado de −10 puntos, que solo amplifica si el eje ya está por debajo de 60. Penalizar a una empresa sana por tener pocos proveedores sería castigar su modelo de negocio.
-- ~~Falsos positivos por juventud (95,0 con un solo mes)~~ → la contracción empírica hacia el prior lleva ese caso a ~60, y `apto_ranking` marca quién tiene evidencia suficiente. Ya no hace falta filtrar a mano.
 
 ---
 
@@ -613,12 +580,10 @@ ingresos_momentum_3m  →  flag_tijera  →  colchon_flujo_meses  →  edad_medi
         adelantada  ·············································· retrasada
 ```
 
-En la v1 casi la mitad del peso vivía en el extremo retrasado (morosidad 30% +
-runway 18%). Hoy la morosidad sigue pesando (deuda comercial 20% + cobro 12%), pero
-el runway ya no es eje: el colchón de flujo (18%) se mueve **antes** que el impago
-formal, y la volatilidad del flujo —el mejor predictor de asfixia— entra como
-penalización de ese colchón. El peso retrasado que queda es consciente, no un
-descuido: confirmar el daño también es parte del score.
+La morosidad pesa (deuda comercial 20% + cobro 12%) porque confirma el daño.
+El runway no es eje: el colchón de flujo (18%) se mueve **antes** que el
+impago formal, y la volatilidad —mejor predictor de asfixia— penaliza ese
+colchón.
 
 **2. Tiene que existir en la mayoría de los meses.** Una métrica con un 96% de
 `NaN` no puede avisar con antelación porque no hay serie. Este es el criterio que
@@ -638,37 +603,9 @@ temporal". Las herramientas ya están: `*_3m` / `*_6m`, `persistente_*`,
 denominador roto. Y al entrar en medias, percentiles o desviaciones contamina a
 las demás empresas, no solo a la suya.
 
-### 11.2 La regla de disparo que NO funcionó
+Las tres señales vigentes (nivel / cola / giro) están en `SCORE_ENGINE.md` §7.
 
-Este apartado documenta un error, porque la versión anterior de este documento
-proponía una regla que después medimos y resultó peor que el azar. Conviene que
-quede escrito.
-
-La propuesta era combinar tres condiciones independientes:
-
-```
-ALERTA  =  NIVEL preocupante          (pctl_* en el peor decil)
-       Y   DIRECCIÓN de deterioro     (z_* > 1,5  o  *_3m_vs_prev3m negativo)
-       Y   PERSISTENCIA               (persistente_*  o  *_3m >= 2)
-```
-
-Suena razonable y está mal. Medida, esa alerta dio **precisión 87,8% con detección
-del 6,6% y 1 mes de antelación**, y una variante disparada por dirección sostenida
-dio **lift 0,90**, peor que tirar una moneda. Un baseline trivial ("el score
-mensual está bajo") la batía en recall, precisión y antelación a la vez.
-
-**El fallo era de diseño, no de umbral.** Exigir que el nivel ya esté en el peor
-decil garantiza avisar cuando el problema ya está aquí: es una definición de alerta
-que excluye por construcción la anticipación. Y el baseline ganaba porque el evento
-**se define por nivel**, así que cualquier señal de nivel lo predice casi por
-tautología.
-
-Lo que lo sustituye es una separación en dos capas, donde la capa de anticipación
-exige explícitamente que el nivel **siga siendo aceptable**, más un tercer detector
-autorreferenciado para el caso "de 82 a 68". El diseño completo, con los
-disparadores de cada canal y sus lifts medidos, está en `SCORE_ENGINE.md` §8 y §9.
-
-### 11.3 Cómo se mide la antelación
+### 11.2 Cómo se mide la antelación
 
 No hay ground truth, así que el evento se define sobre el propio panel. Implementado
 en `evaluate_anticipation.py`, con dos eventos:
@@ -698,34 +635,9 @@ Dos trampas declaradas:
    frente a un desenlace externo. No es validación fuera de muestra y no se presenta
    como tal.
 
-### 11.4 Estado de los cambios propuestos al `score_engine`
-
-Los seis cambios que proponía este documento están **implementados**, y se dejan
-listados con su resultado porque tres de ellos no salieron como se esperaba.
-
-| Cambio propuesto | Estado | Resultado real |
-|---|---|---|
-| 1. Morosidad con respaldo en cascada | Hecho | La palanca principal: mediana de meses evaluados 6 → 19 |
-| 2. `colchon_flujo_meses` en lugar de `runway_meses` | Hecho | El runway queda como modulador por percentil, no como eje |
-| 3. Separar tendencia en nivel y dirección | Hecho, con matiz | La trayectoria es eje propio con 5 sub-señales, pero su AUC sobre eventos es **0,49**: pesa 0,18 por lo que pide el reto, no por lo que predice |
-| 4. Concentración como modulador | Hecho | −10 puntos como tope, y solo si el eje ya está bajo 60 |
-| 5. Ranking por evidencia antes que por nota | Resuelto de otra forma | La contracción empírica lo arregla en el propio score; `apto_ranking` lo marca |
-| 6. Recalcular `MIN_PESO_CUBIERTO_SCORE` | **No hizo falta** | Sigue en 0,55. La cobertura subió por tener más datos, que era el objetivo |
-
-Se mantiene la arquitectura de reglas expertas. Sin ground truth, un modelo
-entrenado sobre un objetivo que uno mismo define solo aprende su propia heurística,
-con ruido y sin explicabilidad.
-
-Un cambio que **no** estaba en esta lista y resultó el más importante: `dso_dias` /
-`dpo_dias` se proponían como "la señal de anticipación más directa del panel" y no
-entraron en el motor. Lo que sí entró, y no estaba previsto, fue
-`flujo_volatilidad_6m` como penalización del colchón, tras medir que era el mejor
-predictor único de asfixia de caja (AUC 0,71) y que hasta entonces solo se usaba
-para *amortiguar* la trayectoria, es decir, para descartarlo.
-
 ---
 
-## 12. Resumen: qué features usaremos y de dónde vienen
+## 12. Resumen: qué features usa el motor y de dónde vienen
 
 Clasificación por origen:
 
@@ -800,7 +712,7 @@ Nada de esto vuelve al panel.
 | `burn_rate_cap`, `flujo_yoy`, DSO/DPO, HHI, `n_overdue_*`, `flag_burn_alto` | Nadie las leía o se solapaban |
 | Percentiles y z-scores huérfanos | No disparaban canal ni eje |
 | Andamiaje (`flag_*` crudos, `*_fuente`, `*_topado`, `mes_idx`, conteos) | Se usa dentro de `build_features` y se tira al escribir el panel |
-| `zero_months` como eje al 13% (otro enfoque) | Ya cubierto por `mes_sin_ingresos` + persistencia |
+| Meses a cero como eje propio | Ya cubierto por `mes_sin_ingresos` + persistencia |
 
 ### 12.6 Qué lee cada eje (69 columnas)
 
