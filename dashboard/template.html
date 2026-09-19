@@ -1,0 +1,508 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pulso Radar</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  color-scheme:light;
+  --bg:#f4f5f8; --surface:#ffffff; --surface-2:#eef0f5; --ink:#141821; --ink-2:#464e60; --ink-3:#7b8397; --line:#e1e4ec;
+  --accent:#2a78d6; --accent-soft:#e3eefb;
+  --b1:#2a78d6; --b2:#eb6834; --b3:#1baf7a; --b4:#eda100;
+  --pos:#2a78d6; --neg:#e34948;
+  --good:#0ca30c; --warn:#fab219; --serious:#ec835a; --crit:#d03b3b;
+  --good-t:#0a7a0a; --warn-t:#8a6100; --crit-t:#b42b2b;
+  --shadow:0 1px 2px rgba(20,24,33,.05),0 6px 20px -8px rgba(20,24,33,.10);
+  --f-display:"Bricolage Grotesque","Instrument Sans",system-ui,sans-serif;
+  --f-body:"Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  color-scheme:dark;
+  --bg:#0d1016; --surface:#161a23; --surface-2:#1e232f; --ink:#f1f3f8; --ink-2:#b9c0d0; --ink-3:#818aa0; --line:#272d3b;
+  --accent:#3987e5; --accent-soft:#17263b;
+  --b1:#3987e5; --b2:#d95926; --b3:#199e70; --b4:#c98500;
+  --pos:#3987e5; --neg:#e66767;
+  --good-t:#3ec33e; --warn-t:#f0b73a; --crit-t:#ef7a7a;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -10px rgba(0,0,0,.6);
+}}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0d1016; --surface:#161a23; --surface-2:#1e232f; --ink:#f1f3f8; --ink-2:#b9c0d0; --ink-3:#818aa0; --line:#272d3b;
+  --accent:#3987e5; --accent-soft:#17263b;
+  --b1:#3987e5; --b2:#d95926; --b3:#199e70; --b4:#c98500;
+  --pos:#3987e5; --neg:#e66767;
+  --good-t:#3ec33e; --warn-t:#f0b73a; --crit-t:#ef7a7a;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -10px rgba(0,0,0,.6);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:14px/1.5 var(--f-body);-webkit-font-smoothing:antialiased}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+h1,h2,h3{font-family:var(--f-display);margin:0;letter-spacing:-.01em;text-wrap:balance}
+small,.mut{color:var(--ink-3)}
+.num{font-variant-numeric:tabular-nums;font-family:var(--f-mono);font-size:.92em}
+a{color:var(--accent)}
+
+/* shell */
+header{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.bar{max-width:1280px;margin:0 auto;padding:10px 20px;display:flex;align-items:center;gap:20px;flex-wrap:wrap}
+.brand{display:flex;align-items:baseline;gap:10px}
+.brand b{font:700 22px/1 var(--f-display);letter-spacing:-.02em}
+.brand span{font-size:12px;color:var(--ink-3)}
+nav{display:flex;gap:2px;overflow-x:auto;flex:1;min-width:0}
+nav button{background:none;border:0;padding:7px 12px;border-radius:8px;color:var(--ink-2);font-weight:500;white-space:nowrap}
+nav button:hover{background:var(--surface-2)}
+nav button[aria-selected="true"]{background:var(--ink);color:var(--bg)}
+.month{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-3)}
+.month select{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-weight:600;color:var(--ink)}
+.month button{width:30px;height:30px;border-radius:8px;border:1px solid var(--line);background:var(--surface)}
+main{max-width:1280px;margin:0 auto;padding:22px 20px 60px;display:flex;flex-direction:column;gap:18px}
+
+/* atoms */
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:var(--shadow)}
+.panel>h2,.panel>.hd h2{font-size:16px;margin-bottom:2px}
+.hd{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.sub{color:var(--ink-3);font-size:12.5px;margin:0}
+.grid{display:grid;gap:18px}
+.g2{grid-template-columns:minmax(0,1.7fr) minmax(0,1fr)}
+.g2e{grid-template-columns:repeat(2,minmax(0,1fr))}
+.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media (max-width:920px){.g2,.g2e,.g3{grid-template-columns:minmax(0,1fr)}}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:600;border:1px solid var(--line);background:var(--surface-2);white-space:nowrap}
+.chip i{width:8px;height:8px;border-radius:50%;display:inline-block}
+.chip.good{color:var(--good-t)} .chip.crit{color:var(--crit-t)} .chip.warn{color:var(--warn-t)}
+.btn{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 12px;font-weight:500}
+.btn:hover{border-color:var(--ink-3)}
+.btn.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+input[type=search],input[type=text]{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:7px 10px;min-width:200px}
+.pos{color:var(--pos)} .neg{color:var(--neg)}
+
+/* kpis */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;text-align:left;box-shadow:var(--shadow)}
+.kpi b{display:block;font:700 30px/1.1 var(--f-display);letter-spacing:-.02em}
+.kpi span{font-size:12.5px;color:var(--ink-2)}
+.kpi small{display:block;font-size:11.5px}
+button.kpi:hover{border-color:var(--ink-3)}
+button.kpi.on{outline:2px solid var(--accent)}
+.kpi.lead{background:var(--ink);color:var(--bg);border-color:var(--ink)} .kpi.lead span,.kpi.lead small{color:color-mix(in srgb,var(--bg) 70%,transparent)}
+
+/* tables */
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+th{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);text-align:left;font-weight:600;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+th button{all:unset;cursor:pointer}
+td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+tbody tr[data-act]{cursor:pointer}
+tbody tr[data-act]:hover{background:var(--surface-2)}
+td small{display:block;line-height:1.2}
+.mb{display:inline-flex;align-items:flex-end;gap:3px;height:22px}
+.mb i{width:7px;border-radius:2px 2px 0 0;display:block}
+.scorecell{display:flex;align-items:center;gap:10px}
+.scorecell b{font-family:var(--f-mono);font-size:14px;min-width:38px}
+svg text{font-family:var(--f-body)}
+.axis{fill:var(--ink-3);font-size:11px}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--ink-2);margin-bottom:6px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{display:inline-block;width:16px;height:0;border-top:2.5px solid}
+
+/* movers */
+.mv{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);cursor:pointer}
+.mv small{display:block;line-height:1.2}
+.mv:hover b{text-decoration:underline}
+.mv:last-child{border:0}
+
+/* empresa */
+.hero{display:grid;grid-template-columns:auto 1fr;gap:22px;align-items:center}
+.big{font:700 68px/1 var(--f-display);letter-spacing:-.04em}
+@media (max-width:560px){.hero{grid-template-columns:1fr}}
+.blk{display:grid;grid-template-columns:96px 1fr 34px;gap:10px;align-items:center;padding:6px 0;font-size:13px}
+.track{position:relative;height:10px;background:var(--surface-2);border-radius:99px}
+.track i{position:absolute;left:0;top:0;bottom:0;border-radius:99px}
+.track u{position:absolute;left:50%;top:-3px;bottom:-3px;width:1px;background:var(--ink-3)}
+.dv{display:grid;grid-template-columns:minmax(120px,1.3fr) minmax(120px,1fr) 52px;gap:12px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}
+.dv:last-child{border:0}
+.dv .dl{font-size:13px;line-height:1.3}
+.dv .dl small{display:block}
+.dz{position:relative;height:16px}
+.dz .ax{position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--ink-3)}
+.dz b{position:absolute;top:2px;bottom:2px;border-radius:4px}
+.dn{text-align:right;font-family:var(--f-mono);font-size:12.5px}
+.lg{display:grid;grid-template-columns:minmax(150px,1.5fr) minmax(70px,1fr) 34px 46px 56px;gap:10px;align-items:center;padding:5px 0;font-size:13px}
+.lg .dl small{display:block}
+.lgb{height:8px;background:var(--surface-2);border-radius:99px;overflow:hidden}
+.lgb i{display:block;height:100%;border-radius:99px}
+.lg .dn{font-family:var(--f-mono);font-size:12.5px;text-align:right;white-space:nowrap}
+.lgh{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;margin:14px 0 2px;padding-bottom:4px;border-bottom:1px solid var(--line)}
+.lgh:first-child{margin-top:0}
+.lgt{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:14px;padding-top:10px;border-top:2px solid var(--ink);font-size:14.5px}
+@media (max-width:560px){.lg{grid-template-columns:minmax(0,1fr) 34px 46px 56px}.lg .lgb{display:none}}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.act{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--surface-2)}
+.act h3{font-size:14.5px;margin-bottom:4px}
+.act p{margin:0 0 8px;color:var(--ink-2);font-size:13px}
+.tag{font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:6px;background:var(--accent-soft);color:var(--accent)}
+.tabs2{display:flex;gap:6px;flex-wrap:wrap}
+.summary{font-size:14.5px;margin:0 0 12px;color:var(--ink)}
+.al{display:grid;grid-template-columns:78px 1fr;gap:12px;padding:9px 0;border-bottom:1px solid var(--line);cursor:pointer}
+.al:last-child{border:0}
+.al:hover .alt{text-decoration:underline}
+.al p{margin:2px 0 0;color:var(--ink-2);font-size:13px}
+.note{border-left:3px solid var(--warn);padding:8px 12px;background:var(--surface-2);border-radius:0 8px 8px 0;font-size:13px;color:var(--ink-2)}
+.seg{display:flex;flex-direction:column;gap:8px}
+.seg h3{font-size:15px}
+.seg .cnt{font:700 34px/1 var(--f-display)}
+ul.clean{margin:6px 0 0;padding-left:18px;color:var(--ink-2)}
+ul.clean li{margin:4px 0}
+#tip{position:fixed;z-index:50;pointer-events:none;background:var(--ink);color:var(--bg);padding:7px 10px;border-radius:8px;font-size:12.5px;line-height:1.4;max-width:280px;box-shadow:0 8px 24px rgba(0,0,0,.25);opacity:0;transition:opacity .08s}
+#tip b{font-weight:600}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header><div class="bar">
+  <div class="brand"><b>Pulso</b><span>Radar de salud financiera</span></div>
+  <nav id="nav" role="tablist" aria-label="Secciones"></nav>
+  <div class="month"><span>Datos a</span>
+    <button id="prev" aria-label="Mes anterior">‹</button>
+    <select id="mo" aria-label="Mes"></select>
+    <button id="next" aria-label="Mes siguiente">›</button></div>
+</div></header>
+<main id="app"></main>
+<div id="tip" role="tooltip"></div>
+
+<script>
+const D=/*DATA*/null;
+/* ---------- utilidades ---------- */
+const $=(s,e=document)=>e.querySelector(s);
+const MN=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+const ml=i=>{const [y,m]=D.months[i].split('-');return MN[+m-1]+' '+y};
+const mls=i=>{const [y,m]=D.months[i].split('-');return MN[+m-1]+' '+y.slice(2)};
+const fmt=(x,n=1)=>x==null?'–':x.toFixed(n).replace('.',',');
+const sgn=(x,n=1)=>x==null?'–':(x>0?'+':x<0?'−':'')+Math.abs(x).toFixed(n).replace('.',',');
+const pct=(x,n=0)=>x==null?'–':(x*100).toFixed(n).replace('.',',')+' %';
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const erf=x=>{const t=1/(1+0.3275911*Math.abs(x)),y=1-(((((1.061405429*t-1.453152027)*t)+1.421413741)*t-0.284496736)*t+0.254829592)*t*Math.exp(-x*x);return x>=0?y:-y};
+const cdf=z=>0.5*(1+erf(z/Math.SQRT2));
+const NM=D.months.length, LAST=NM-1;
+const BN={liquidez:'Liquidez',pago:'Pago',financiacion:'Financiación',ingresos:'Ingresos'};
+const BC={liquidez:'var(--b1)',pago:'var(--b2)',financiacion:'var(--b3)',ingresos:'var(--b4)'};
+const LV=['frágil','débil','sana','sólida'], LVC=['var(--crit)','var(--serious)','var(--ink-3)','var(--good)'];
+const CU=D.cuts, ABS=D.mode==='abs';
+const lvl=s=>s<CU[0]?0:s<CU[1]?1:s<CU[2]?2:3;
+const DIRS={1:['▲','mejorando','good'],2:['▼','deteriorando','crit'],3:['◆','bache puntual','warn']};
+const SI=Object.fromEntries(D.sig.map((g,i)=>[g.k,i]));
+const byId=Object.fromEntries(D.co.map(c=>[c.id,c]));
+const chipL=s=>s==null?'':`<span class="chip"><i style="background:${LVC[lvl(s)]}"></i>${LV[lvl(s)]}</span>`;
+const chipD=d=>d?`<span class="chip ${DIRS[d][2]}">${DIRS[d][0]} ${DIRS[d][1]}</span>`:'<span class="mut">estable</span>';
+const st={tab:'cartera',mi:LAST,sel:D.featured,q:'',flt:null,group:null,sort:'s',asc:false,limit:25,view:'empresas',why:'nivel',tbl:false,alD:'todas',alT:'todas',alLim:40};
+const at=()=>D.co.filter(c=>c.s[st.mi]!=null);
+
+/* ---------- gráficos pequeños ---------- */
+function spark(arr,mi,w=84,h=24,hl=null){
+  const lo=Math.max(0,mi-11),pts=[];
+  for(let i=lo;i<=mi;i++)if(arr[i]!=null)pts.push([i,arr[i]]);
+  if(pts.length<2)return `<svg width="${w}" height="${h}"></svg>`;
+  let mn=Math.min(...pts.map(p=>p[1])),mx=Math.max(...pts.map(p=>p[1]));const span=Math.max(mx-mn,20),mid=(mx+mn)/2;mn=mid-span/2;
+  const X=i=>2+(w-4)*(i-lo)/Math.max(mi-lo,1),Y=v=>h-3-(h-6)*(v-mn)/span;
+  const d=pts.map((p,k)=>(k?'L':'M')+X(p[0]).toFixed(1)+' '+Y(p[1]).toFixed(1)).join('');
+  const e=pts[pts.length-1];
+  const hm=hl!=null&&arr[hl]!=null&&hl>=lo?`<circle cx="${X(hl)}" cy="${Y(arr[hl])}" r="3" fill="var(--crit)"/>`:'';
+  return `<svg width="${w}" height="${h}" aria-hidden="true"><path d="${d}" fill="none" stroke="var(--accent)" stroke-width="1.6" stroke-linejoin="round"/>${hm}<circle cx="${X(e[0])}" cy="${Y(e[1])}" r="2.6" fill="var(--accent)"/></svg>`;
+}
+const miniB=(c,mi)=>`<span class="mb">${D.blocks.map((b,k)=>{const v=c.B[k][mi];return `<i style="height:${v==null?2:Math.max(2,v*.22)}px;background:${BC[b]}" data-tip="<b>${BN[b]}</b> ${fmt(v,0)}"></i>`}).join('')}</span>`;
+
+function histo(rows){
+  const W=620,H=230,L=34,R=10,T=10,B=44,nb=20,bins=Array(nb).fill(0);
+  rows.forEach(c=>{bins[Math.min(nb-1,Math.floor(c.s[st.mi]/5))]++});
+  const mx=Math.max(...bins),step=mx>200?100:mx>80?50:20,top=Math.ceil(mx/step)*step;
+  const X=v=>L+(W-L-R)*v/100,Y=n=>T+(H-T-B)*(1-n/top);
+  const sorted=rows.map(c=>c.s[st.mi]).sort((a,b)=>a-b),med=sorted[sorted.length>>1];
+  let g='';
+  for(let n=0;n<=top;n+=step)g+=`<line x1="${L}" x2="${W-R}" y1="${Y(n)}" y2="${Y(n)}" stroke="var(--line)"/><text class="axis" x="${L-6}" y="${Y(n)+4}" text-anchor="end">${n}</text>`;
+  const bars=bins.map((n,i)=>`<rect x="${X(i*5)+1}" y="${Y(n)}" width="${X(5)-X(0)-2}" height="${Y(0)-Y(n)}" rx="3" fill="var(--b1)" opacity=".9" data-tip="<b>${i*5}–${i*5+5} puntos</b><br>${n} empresas"/>`).join('');
+  const cut=[[CU[0],'frágil'],[CU[1],'débil'],[CU[2],'sana'],[100,'sólida']];
+  let bl='',prev=0;
+  cut.forEach(([v,n],i)=>{bl+=`<text class="axis" x="${(X(prev)+X(v))/2}" y="${H-24}" text-anchor="middle" style="fill:${LVC[i]};font-weight:600">${n}</text>`;if(i<3)bl+=`<line x1="${X(v)}" x2="${X(v)}" y1="${T}" y2="${H-B}" stroke="var(--ink-3)" stroke-dasharray="3 3"/>`;prev=v});
+  let ax='';for(let v=0;v<=100;v+=10)ax+=`<text class="axis" x="${X(v)}" y="${H-B+14}" text-anchor="middle">${v}</text>`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Distribución del score de la cartera">${g}${bl}${bars}<line x1="${X(med)}" x2="${X(med)}" y1="${T}" y2="${H-B}" stroke="var(--ink)" stroke-width="2"/><text x="${X(med)+5}" y="${T+11}" style="font-size:11.5px;font-weight:600;fill:var(--ink)">mediana ${fmt(med,0)}</text>${ax}</svg>`;
+}
+
+/* ---------- gráfico de empresa ---------- */
+function chartEmpresa(c){
+  const W=900,H=310,L=38,R=64,T=14,B=28,N=NM+3;
+  const X=i=>L+(W-L-R)*i/(N-1),Y=v=>T+(H-T-B)*(1-v/100);
+  const path=arr=>{let d='',pen=false;arr.forEach((v,i)=>{if(v==null){pen=false;return}d+=(pen?'L':'M')+X(i).toFixed(1)+' '+Y(v).toFixed(1);pen=true});return d};
+  const bands=[[0,CU[0],'var(--crit)'],[CU[0],CU[1],'var(--serious)'],[CU[1],CU[2],'var(--ink-3)'],[CU[2],100,'var(--good)']];
+  let s=bands.map(([a,b,col],i)=>`<rect x="${L}" y="${Y(b)}" width="${W-L-R}" height="${Y(a)-Y(b)}" fill="${col}" opacity=".07"/><text class="axis" x="${W-R+8}" y="${Y((a+b)/2)+4}" style="fill:${LVC[i]};font-weight:600">${LV[i]}</text>`).join('');
+  [0,...CU,100].forEach(v=>s+=`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--ink-3)" stroke-dasharray="${v%100?'3 4':'0'}" opacity="${v%100?.5:.25}"/><text class="axis" x="${L-6}" y="${Y(v)+4}" text-anchor="end">${v}</text>`);
+  for(let i=0;i<NM;i+=3)s+=`<text class="axis" x="${X(i)}" y="${H-8}" text-anchor="middle">${mls(i)}</text>`;
+  s+=`<text class="axis" x="${X(NM+1)}" y="${H-8}" text-anchor="middle">+3 m</text>`;
+  // proyección
+  const sv=c.s[st.mi],ev=c.e[st.mi];
+  if(sv!=null&&ev!=null){const y1=Math.max(0,Math.min(100,sv+ev)),sd=D.trendSd;
+    s+=`<path d="M${X(st.mi)} ${Y(sv)}L${X(st.mi+3)} ${Y(Math.min(100,y1+sd))}L${X(st.mi+3)} ${Y(Math.max(0,y1-sd))}Z" fill="var(--accent)" opacity=".14"/>`;
+    s+=`<path d="M${X(st.mi)} ${Y(sv)}L${X(st.mi+3)} ${Y(y1)}" stroke="var(--accent)" stroke-width="2" stroke-dasharray="2 4" stroke-linecap="round"/><circle cx="${X(st.mi+3)}" cy="${Y(y1)}" r="4" fill="var(--surface)" stroke="var(--accent)" stroke-width="2"/>`;}
+  s+=`<path d="${path(c.f)}" fill="none" stroke="var(--ink-3)" stroke-width="1.5" stroke-dasharray="5 4"/>`;
+  s+=`<path d="${path(c.s)}" fill="none" stroke="var(--accent)" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>`;
+  D.al.filter(a=>a.c===c.id).forEach(a=>{const v=c.s[a.i];if(v==null)return;const up=a.d==='m',x=X(a.i),y=Y(v)+(up?-11:11);
+    s+=`<path d="M${x} ${y-(up?5:-5)}l5 ${up?10:-10}h-10z" fill="${up?'var(--good)':'var(--crit)'}" stroke="var(--surface)" stroke-width="1.5" data-tip="<b>${ml(a.i)}</b> · ${a.d==='m'?'mejora':'deterioro'}<br>${esc(a.tx)}"/>`});
+  if(sv!=null)s+=`<circle cx="${X(st.mi)}" cy="${Y(sv)}" r="5.5" fill="var(--accent)" stroke="var(--surface)" stroke-width="2"/><text x="${X(st.mi)}" y="${Y(sv)-11}" text-anchor="middle" style="font-size:12px;font-weight:700;fill:var(--ink);paint-order:stroke;stroke:var(--surface);stroke-width:3px">${fmt(sv)}</text>`;
+  s+=`<line id="xh" y1="${T}" y2="${H-B}" stroke="var(--ink)" opacity="0" stroke-width="1"/><rect id="ov" x="${L}" y="${T}" width="${W-L-R}" height="${H-T-B}" fill="transparent" style="cursor:crosshair"/>`;
+  return `<svg id="ch" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Evolución del score de ${c.id}">${s}</svg>`;
+}
+function wireChart(c){
+  const svg=$('#ch');if(!svg)return;
+  const W=900,L=38,R=64,N=NM+3,ov=$('#ov'),xh=$('#xh');
+  const idx=e=>{const r=svg.getBoundingClientRect(),vx=(e.clientX-r.left)*W/r.width;return Math.max(0,Math.min(NM-1,Math.round((vx-L)/(W-L-R)*(N-1))))};
+  ov.addEventListener('pointermove',e=>{const i=idx(e),x=L+(W-L-R)*i/(N-1);xh.setAttribute('x1',x);xh.setAttribute('x2',x);xh.setAttribute('opacity',.35);
+    const al=D.al.filter(a=>a.c===c.id&&a.i===i);
+    showTip(`<b>${ml(i)}</b><br>Score ${fmt(c.s[i])} · trimestre reciente ${fmt(c.f[i])}<br>${D.blocks.map((b,k)=>BN[b]+' '+fmt(c.B[k][i],0)).join(' · ')}${al.length?'<br>⚑ '+al.map(a=>esc(a.tx)).join('<br>⚑ '):''}<br><i>clic para ver este mes</i>`,e.clientX,e.clientY)});
+  ov.addEventListener('pointerleave',()=>{xh.setAttribute('opacity',0);hideTip()});
+  ov.addEventListener('click',e=>{st.mi=idx(e);render()});
+}
+
+/* ---------- tooltip ---------- */
+const tip=$('#tip');
+function showTip(h,x,y){tip.innerHTML=h;tip.style.opacity=1;const w=tip.offsetWidth,hh=tip.offsetHeight;tip.style.left=Math.min(x+14,innerWidth-w-8)+'px';tip.style.top=(y+hh+24>innerHeight?y-hh-12:y+14)+'px'}
+function hideTip(){tip.style.opacity=0}
+document.addEventListener('pointermove',e=>{const t=e.target.closest&&e.target.closest('[data-tip]');if(t)showTip(t.getAttribute('data-tip'),e.clientX,e.clientY);else if(!e.target.closest('#ov'))hideTip()});
+
+/* ---------- explicación ---------- */
+const rawTxt=(k,r,z)=>{if(r==null)return 'sin dato';
+  if((k==='leverage'||k==='debt_service')&&r===0)return 'sin deuda';
+  return ({runway:`${fmt(r)} meses de gasto en caja`,net_margin:`margen de caja ${pct(r)}`,ar_overdue:`${pct(r)} de lo que vence sin cobrar`,ap_overdue:`${pct(r)} de facturas de proveedor vencidas`,
+  ar_days_late:`${fmt(r,0)} días de retraso al cobrar`,ap_days_late:`${fmt(r,0)} días de retraso al pagar`,refund_rate:`${pct(r,1)} de cobros devueltos`,debt_service:`${pct(r)} de los ingresos`,
+  leverage:`${fmt(r,2)}× los ingresos anuales`,inflow_cv:`variabilidad ${fmt(r,2)}`,zero_months:`${pct(r)} de meses sin ingresos`,top1_customer:`${pct(r)} en el mayor cliente`,
+  growth:`${r>=0?'+':'−'}${pct(Math.abs(Math.exp(r)-1))} vs periodo anterior`})[k]};
+function contrib(c,mi,back){
+  if(back&&(mi-back<0||c.s[mi-back]==null))return null;
+  return D.sig.map((g,k)=>{const z=c.Z[k][mi],z0=back?(c.Z[k][mi-back]||0):0;return{k:g.k,g,z,raw:c.R[k][mi],v:D.kpt*g.w*((z||0)-z0)}}).sort((a,b)=>Math.abs(b.v)-Math.abs(a.v));
+}
+function dvBars(list){
+  const mx=Math.max(...list.map(x=>Math.abs(x.v)),1);
+  return list.map(x=>{const w=Math.abs(x.v)/mx*50,pos=x.v>=0;
+    const pc=x.z==null?'sin dato':ABS?'nota '+Math.round(x.z+50)+' / 100':'mejor que el '+Math.round(cdf(x.z)*100)+' % de las empresas';
+    return `<div class="dv" data-tip="<b>${esc(x.g.label)}</b><br>${rawTxt(x.k,x.raw)}<br>${pc}<br>peso ${Math.round(x.g.w*1000)/10} %"><div class="dl"><span class="dot" style="background:${BC[x.g.block]}"></span>${esc(x.g.label)}<small>${esc(rawTxt(x.k,x.raw))}</small></div><div class="dz"><i class="ax"></i><b style="${pos?'left':'right'}:50%;width:${w}%;background:${pos?'var(--pos)':'var(--neg)'}"></b></div><div class="dn ${pos?'pos':'neg'}">${sgn(x.v)}</div></div>`}).join('');
+}
+function ledger(c,mi,s){
+  const R=D.sig.map((g,k)=>{const z=c.Z[k][mi];return{g,k,nota:z==null?50:z+50,miss:z==null,raw:c.R[k][mi]}});
+  let tot=0;
+  const body=D.blocks.map(b=>{
+    const rs=R.filter(r=>r.g.block===b),pts=rs.reduce((a,r)=>a+r.g.w*r.nota,0),max=rs.reduce((a,r)=>a+r.g.w*100,0);tot+=pts;
+    return `<div class="lgh"><span><span class="dot" style="background:${BC[b]}"></span><b>${BN[b]}</b> <span class="mut">· nota del bloque <b style="color:var(--ink)">${fmt(pts/max*100,0)}</b> (media ponderada de sus señales)</span></span><span class="num">${fmt(pts,1)} de ${fmt(max,0)} pts</span></div>`+
+      rs.map(r=>`<div class="lg" data-tip="<b>${esc(r.g.label)}</b><br>${esc(r.miss?'sin dato: cuenta como 50':rawTxt(r.g.k,r.raw))}<br>nota ${fmt(r.nota,0)} × peso ${fmt(r.g.w*100,1)} % = ${fmt(r.g.w*r.nota,2)} puntos"><div class="dl">${esc(r.g.label)}<small>${esc(r.miss?'sin dato: cuenta como 50':rawTxt(r.g.k,r.raw))}</small></div><div class="lgb"><i style="width:${r.nota}%;background:${BC[b]}"></i></div><div class="dn">${fmt(r.nota,0)}</div><div class="dn mut">× ${fmt(r.g.w*100,r.g.w*1000%10?1:0)} %</div><div class="dn"><b>${fmt(r.g.w*r.nota,1)}</b></div></div>`).join('');
+  }).join('');
+  const lost=R.map(r=>({r,l:r.g.w*(100-r.nota)})).sort((a,b)=>b.l-a.l).filter(x=>x.l>=.5).slice(0,2);
+  return{html:`<div class="lg mut" style="font-size:11.5px;text-transform:uppercase;letter-spacing:.05em"><span>Señal</span><span>Nota (0–100)</span><span class="dn">Nota</span><span class="dn">Peso</span><span class="dn">Puntos</span></div>${body}<div class="lgt"><b>Total = suma de los puntos</b><span class="num"><b>${fmt(tot,1)}</b> = score ${fmt(s,1)}</span></div>`,
+    lost:lost.map(x=>`${x.r.g.label.toLowerCase()} (−${fmt(x.l,1)} de ${fmt(x.r.g.w*100,0)})`)};
+}
+const ACT={
+ runway:r=>['Proteger la caja',`Solo tiene caja para ${fmt(r)} meses de gasto. Anticipar cobros o abrir una línea de circulante antes de que baje de 1 mes.`,'Línea de circulante'],
+ net_margin:r=>['Cerrar la brecha entre cobros y pagos',`Los pagos superan a los cobros (margen de caja ${pct(r)}). Revisar el calendario de pagos y adelantar cobros.`,'Planificación de tesorería'],
+ ar_overdue:r=>['Reclamar lo vencido a clientes',`${pct(r)} de lo que ya venció sigue sin cobrar. Priorizar a los clientes mayores o anticipar esas facturas.`,'Factoring / anticipo de facturas'],
+ ap_overdue:r=>['Renegociar con proveedores',`${pct(r)} de las facturas de proveedores están vencidas. Pactar plazos antes de que corten suministro.`,'Confirming'],
+ ar_days_late:r=>['Automatizar recordatorios de cobro',`Cobra con ${fmt(r,0)} días de retraso de media. Recordatorios automáticos y descuento por pronto pago.`,'Gestión de cobros'],
+ ap_days_late:r=>['Ordenar los pagos a proveedores',`Paga con ${fmt(r,0)} días de retraso de media. Un calendario de pagos evita recargos y pérdida de confianza.`,'Calendario de pagos'],
+ refund_rate:r=>['Revisar domiciliaciones devueltas',`${pct(r,1)} de los cobros vuelven como recibo devuelto. Revisar mandatos y datos bancarios de los clientes.`,'Gestión de cobros'],
+ debt_service:r=>['Aliviar el peso de la deuda',`El servicio de deuda se lleva el ${pct(r)} de los ingresos. Valorar refinanciar o alargar plazos.`,'Refinanciación'],
+ leverage:r=>['Reducir el apalancamiento',`La deuda viva equivale a ${fmt(r,2)} veces los ingresos anuales. Valorar refinanciar o amortizar.`,'Refinanciación'],
+ inflow_cv:r=>['Amortiguar ingresos irregulares',`Los ingresos varían mucho de un mes a otro (variabilidad ${fmt(r,2)}). Mantener un colchón de caja.`,'Línea de circulante'],
+ zero_months:r=>['Vigilar la actividad',`${pct(r)} de los meses recientes no entra dinero. Confirmar si es estacionalidad o pérdida de actividad.`,'Seguimiento de cuenta'],
+ top1_customer:r=>['Diversificar clientes',`${pct(r)} de lo facturado depende de un solo cliente. Diversificar o asegurar ese riesgo.`,'Seguro de crédito'],
+ growth:r=>['Frenar la caída de ingresos',`Los ingresos ${r<0?'caen':'crecen'} un ${pct(Math.abs(Math.exp(r)-1))} frente al periodo anterior.`,'Seguimiento comercial'],
+};
+
+/* ---------- vistas ---------- */
+function kpi(id,val,lab,sub,cls=''){return `<button class="kpi ${cls} ${st.flt&&st.flt.id===id?'on':''}" data-act="flt" data-id="${id}"><b>${val}</b><span>${lab}</span><small>${sub}</small></button>`}
+function fltFn(f){if(!f)return()=>true;if(f.t==='lvl')return c=>lvl(c.s[st.mi])===f.v;return c=>c.d[st.mi]===f.v}
+function cartera(){
+  const rows=at(),n=rows.length,cnt=[0,0,0,0],dc=[0,0,0,0];
+  rows.forEach(c=>{cnt[lvl(c.s[st.mi])]++;dc[c.d[st.mi]||0]++});
+  const sorted=rows.map(c=>c.s[st.mi]).sort((a,b)=>a-b),med=sorted[n>>1];
+  const mv=rows.filter(c=>st.mi>=3&&c.s[st.mi-3]!=null).map(c=>({c,d:c.s[st.mi]-c.s[st.mi-3]})).sort((a,b)=>b.d-a.d);
+  const mvRow=({c,d})=>`<div class="mv" data-act="go" data-id="${c.id}" tabindex="0"><div><b>${c.id}</b><small>${c.g}</small></div>${spark(c.s,st.mi,70,22)}<span class="num ${d>=0?'pos':'neg'}">${sgn(d)}</span></div>`;
+  let list=rows.filter(fltFn(st.flt));
+  if(st.group)list=list.filter(c=>c.g===st.group);
+  if(st.q)list=list.filter(c=>(c.id+c.g).toLowerCase().includes(st.q.toLowerCase()));
+  const key={s:c=>c.s[st.mi],e:c=>c.e[st.mi]??-999,d3:c=>st.mi>=3&&c.s[st.mi-3]!=null?c.s[st.mi]-c.s[st.mi-3]:-999,id:c=>c.id}[st.sort];
+  list.sort((a,b)=>{const x=key(a),y=key(b);return(x<y?-1:x>y?1:0)*(st.asc?1:-1)});
+  const th=(k,l)=>`<th><button data-act="sort" data-id="${k}">${l}${st.sort===k?(st.asc?' ↑':' ↓'):''}</button></th>`;
+  const tr=list.slice(0,st.limit).map(c=>{const s=c.s[st.mi],e=c.e[st.mi],d3=st.mi>=3&&c.s[st.mi-3]!=null?s-c.s[st.mi-3]:null;
+    return `<tr data-act="go" data-id="${c.id}" tabindex="0"><td><b>${c.id}</b><small>${c.g}</small></td><td>${chipL(s)}</td><td><div class="scorecell"><b>${fmt(s)}</b>${spark(c.s,st.mi)}</div></td><td>${chipD(c.d[st.mi])}</td><td class="num ${d3>=0?'pos':'neg'}">${sgn(d3)}</td><td class="num ${e>=0?'pos':'neg'}">${e==null?'–':sgn(e)}</td><td>${miniB(c,st.mi)}</td></tr>`}).join('');
+  const chips=[...(st.flt?[`<button class="btn on" data-act="flt" data-id="${st.flt.id}">${esc(st.flt.name)} ✕</button>`]:[]),...(st.group?[`<button class="btn on" data-act="grp" data-id="">${st.group} ✕</button>`]:[])].join('');
+  const grp=()=>{const g=D.groups.map(g=>{const ms=g.m.map(id=>byId[id]).filter(c=>c.s[st.mi]!=null);return ms.length?{g,ms,s:g.s[st.mi],w:ms.reduce((a,b)=>a.s[st.mi]<b.s[st.mi]?a:b)}:null}).filter(Boolean).sort((a,b)=>a.s-b.s);
+    return `<div class="scroll"><table><thead><tr><th>Grupo</th><th>Empresas</th><th>Nivel</th><th>Score medio</th><th>Empresa más débil</th></tr></thead><tbody>${g.slice(0,st.limit).map(x=>`<tr data-act="grp" data-id="${x.g.id}" tabindex="0"><td><b>${x.g.id}</b></td><td class="num">${x.ms.length}</td><td>${chipL(x.s)}</td><td class="num">${fmt(x.s)}</td><td><b>${x.w.id}</b> <span class="num mut">${fmt(x.w.s[st.mi])}</span></td></tr>`).join('')}</tbody></table></div>${g.length>st.limit?`<p><button class="btn" data-act="more">Mostrar más</button></p>`:''}`};
+  return `
+  <div class="panel" style="background:var(--surface-2);box-shadow:none"><h2>¿Cómo está la cartera en ${ml(st.mi)}?</h2>
+   <p class="sub" style="font-size:13.5px;max-width:90ch">Vista para el equipo que acompaña a las empresas: quién está sano, quién mejora, quién empieza a torcerse y por qué. El score sale del rastro de caja, facturas y deuda; nada se ajusta por lote, así que una empresa nueva se puntúa igual.</p></div>
+  <div class="kpis">
+   ${kpi('all',n,'empresas puntuadas',`score mediano ${fmt(med,0)}`,'lead')}
+   ${kpi('l3',cnt[3]+cnt[2],'sanas o sólidas',pct((cnt[3]+cnt[2])/n)+' de la cartera')}
+   ${kpi('l0',cnt[0],'frágiles',pct(cnt[0]/n)+' · score < '+CU[0])}
+   ${kpi('d1',dc[1],'mejorando','▲ se espera que suban')}
+   ${kpi('d2',dc[2],'deteriorando','▼ se espera que bajen')}
+   ${kpi('d3',dc[3],'baches puntuales','◆ el trimestre cae, la base aguanta')}
+  </div>
+  <div class="grid g2">
+   <div class="panel"><div class="hd"><div><h2>Reparto del score</h2><p class="sub">Empresas por tramo de 5 puntos. ${ABS?'Score absoluto: cada señal se puntúa con una curva fija, sin compararse con otras empresas.':'El score es relativo a la cartera de entrenamiento: 50 = empresa mediana.'}</p></div></div>${histo(rows)}</div>
+   <div class="panel"><div class="hd"><div><h2>Quién se mueve</h2><p class="sub">Cambio del score en 3 meses</p></div></div>
+    <b style="font-size:12px;color:var(--pos)">▲ MEJORAN MÁS</b>${mv.slice(0,5).map(mvRow).join('')}
+    <b style="font-size:12px;color:var(--neg);display:block;margin-top:10px">▼ EMPEORAN MÁS</b>${mv.slice(-5).reverse().map(mvRow).join('')}</div>
+  </div>
+  <div class="panel"><div class="hd"><div><h2>${st.view==='empresas'?'Empresas':'Grupos'}</h2><p class="sub">${st.view==='empresas'?list.length+' resultados · Δ 3 m = cambio del score; esperado = cambio previsto a 3 meses':'Score medio de las empresas puntuadas de cada grupo'}</p></div>
+   <div class="row">${chips}<input type="search" id="q" placeholder="Buscar empresa o grupo" value="${esc(st.q)}" aria-label="Buscar"><span class="tabs2"><button class="btn ${st.view==='empresas'?'on':''}" data-act="view" data-id="empresas">Empresas</button><button class="btn ${st.view==='grupos'?'on':''}" data-act="view" data-id="grupos">Grupos</button></span></div></div>
+   ${st.view==='grupos'?grp():`<div class="scroll"><table><thead><tr>${th('id','Empresa')}<th>Nivel</th>${th('s','Score')}<th>Dirección</th>${th('d3','Δ 3 m')}${th('e','Esperado 3 m')}<th>Bloques L·P·F·I</th></tr></thead><tbody>${tr}</tbody></table></div>${list.length>st.limit?`<p><button class="btn" data-act="more">Mostrar 25 más</button></p>`:''}`}</div>`;
+}
+
+function empresa(){
+  const c=byId[st.sel],mi=st.mi,s=c.s[mi];
+  const opts=D.co.map(x=>`<option value="${x.id}">`).join('');
+  const head=`<div class="row" style="justify-content:space-between"><div class="row"><input type="text" id="pick" list="ids" placeholder="Empresa (ej. ${D.featured})" value="${c.id}" aria-label="Empresa"><datalist id="ids">${opts}</datalist><button class="btn" data-act="go" data-id="${D.featured}" data-mi="${D.featuredMi}">Ver caso destacado</button></div><span class="mut">${c.g} · moneda ${c.cur} · ${c.inv?'con facturas':'sin facturas conectadas'}</span></div>`;
+  if(s==null)return head+`<div class="panel"><h2>${c.id} no tiene score en ${ml(mi)}</h2><p class="sub">Aún no hay suficientes meses observados de caja. Elige un mes posterior.</p></div>`+chartPanel(c);
+  const lv=contrib(c,mi,0),ups=lv.filter(x=>x.v>0).slice(0,2),downs=lv.filter(x=>x.v<0).slice(0,2);
+  const nm=x=>x.g.label.toLowerCase();
+  const lvSum=`<b>${fmt(s)} puntos: ${LV[lvl(s)]}.</b> ${ups.length?`Lo que más suma: ${ups.map(x=>`${nm(x)} (${sgn(x.v)})`).join(' y ')}.`:''} ${downs.length?`Lo que más resta: ${downs.map(x=>`${nm(x)} (${sgn(x.v)})`).join(' y ')}.`:''}`;
+  const back={nivel:0,m1:1,m3:3,m6:6}[st.why],cs=contrib(c,mi,back);
+  let whyBody,whySum;
+  if(back===0&&ABS){const L=ledger(c,mi,s);whyBody=L.html;whySum=`<b>${fmt(s)} de 100 puntos: ${LV[lvl(s)]}.</b> Cada señal vale <i>nota × peso</i> y la suma de las 13 es el score.${L.lost.length?` Donde más puntos pierde: ${L.lost.join(' y ')}.`:' No pierde puntos relevantes en ninguna señal.'}`}
+  else if(back===0){whyBody=dvBars(lv);whySum=lvSum}
+  else if(!cs){whyBody='<p class="sub">No hay score ese mes para comparar.</p>';whySum=''}
+  else{const d=s-c.s[mi-back],top=cs.filter(x=>Math.abs(x.v)>=.1).slice(0,2);
+    whySum=`<b>${d>=0?'Sube':'Baja'} ${fmt(Math.abs(d))} puntos desde ${ml(mi-back)}.</b> ${top.length?'Sobre todo por '+top.map(x=>`${nm(x)} (${sgn(x.v)})`).join(' y ')+'.':'Sin cambios relevantes en ninguna señal.'}`;whyBody=dvBars(cs)+`<div class="lgt"><b>Suma de los cambios</b><span class="num"><b>${sgn(cs.reduce((a,x)=>a+x.v,0))}</b> puntos · variación del score ${sgn(d)}</span></div>`}
+  const weak=lv.filter(x=>x.v<-.3).slice(0,3);
+  const acts=weak.map(x=>{const a=ACT[x.k](x.raw);return `<div class="act"><h3>${a[0]}</h3><p>${a[1]}</p><span class="tag">${a[2]}</span></div>`}).join('')||'<p class="sub">Sin puntos débiles relevantes.</p>';
+  const str=lv.filter(x=>x.v>.3).slice(0,2).map(x=>`<li><b>${esc(x.g.label)}</b> — ${esc(rawTxt(x.k,x.raw))}</li>`).join('');
+  const als=D.al.filter(a=>a.c===c.id).sort((a,b)=>b.i-a.i).map(alRow).join('')||'<p class="sub">Sin avisos hasta la fecha.</p>';
+  const e=c.e[mi];
+  return head+`
+  <div class="panel"><div class="hero"><div><div class="big">${fmt(s)}</div><small>score en ${ml(mi)}</small></div>
+   <div><div class="row" style="margin-bottom:8px">${chipL(s)}${chipD(c.d[mi])}<span class="chip">confianza ${pct(c.cf[mi])}</span></div>
+   <p class="summary" style="margin:0">${e==null?'':`Cambio esperado a 3 meses: <b class="${e>=0?'pos':'neg'}">${sgn(e)} puntos</b> (error típico ±${fmt(D.trendSd,0)}). Es sobre todo reversión al nivel propio, no una predicción de quiebra.`}</p></div></div></div>
+  ${chartPanel(c)}
+  <div class="grid g2">
+   <div class="panel"><div class="hd"><div><h2>Por qué este número</h2><p class="sub">${st.why==='nivel'?(ABS?'Nota de cada señal (0–100) × su peso = puntos; la suma de todas es el score':'Puntos que aporta cada señal frente a una empresa mediana (azul suma, rojo resta)'):'Cambio de puntos de cada señal desde el mes elegido (azul suma, rojo resta); la suma es la variación del score'}</p></div>
+    <div class="tabs2">${[['nivel','Este mes'],['m1','vs mes anterior'],['m3','vs 3 meses'],['m6','vs 6 meses']].map(([k,l])=>`<button class="btn ${st.why===k?'on':''}" data-act="why" data-id="${k}">${l}</button>`).join('')}</div></div>
+    <p class="summary">${whySum}</p>${whyBody}</div>
+   <div class="grid" style="align-content:start">
+    <div class="panel"><h2>Los cuatro bloques</h2><p class="sub">${ABS?'0–100 · media ponderada de las notas de las señales de cada bloque (el desglose está en «Por qué este número»)':'0–100 · la marca central es la empresa mediana'}</p>${D.blocks.map((b,k)=>{const v=c.B[k][mi];return `<div class="blk"><span><span class="dot" style="background:${BC[b]}"></span>${BN[b]}</span><div class="track"><u></u><i style="width:${v}%;background:${BC[b]}"></i></div><span class="num">${fmt(v,0)}</span></div>`}).join('')}</div>
+    <div class="panel"><h2>Qué haría esta semana</h2><p class="sub">Acciones sugeridas por las señales que más restan</p><div class="grid" style="margin-top:10px">${acts}</div>${str?`<p class="sub" style="margin-top:12px"><b>Puntos fuertes</b></p><ul class="clean">${str}</ul>`:''}</div>
+   </div>
+  </div>
+  <div class="panel"><h2>Avisos del monitor</h2><p class="sub">Solo cuando la empresa se mueve de verdad</p>${als}</div>`;
+}
+function chartPanel(c){
+  const tbl=`<div class="scroll"><table><thead><tr><th>Mes</th><th>Score</th><th>Trimestre</th>${D.blocks.map(b=>`<th>${BN[b]}</th>`).join('')}<th>Esperado</th></tr></thead><tbody>${D.months.map((m,i)=>`<tr><td>${ml(i)}</td><td class="num">${fmt(c.s[i])}</td><td class="num">${fmt(c.f[i])}</td>${D.blocks.map((b,k)=>`<td class="num">${fmt(c.B[k][i],0)}</td>`).join('')}<td class="num">${c.e[i]==null?'–':sgn(c.e[i])}</td></tr>`).join('')}</tbody></table></div>`;
+  return `<div class="panel"><div class="hd"><div><h2>Trayectoria</h2><p class="sub">Clic en el gráfico para cambiar de mes</p></div><button class="btn ${st.tbl?'on':''}" data-act="tbl">${st.tbl?'Ver gráfico':'Ver tabla'}</button></div>
+  <div class="legend"><span><i style="border-color:var(--accent)"></i>Score (base 6 meses)</span><span><i style="border-color:var(--ink-3);border-top-style:dashed"></i>Último trimestre</span><span><i style="border-color:var(--accent);border-top-style:dotted"></i>Esperado a 3 meses</span><span><b style="color:var(--crit)">▼</b> aviso de deterioro</span><span><b style="color:var(--good)">▲</b> aviso de mejora</span></div>
+  ${st.tbl?tbl:chartEmpresa(c)}</div>`;
+}
+function alRow(a){return `<div class="al" data-act="go" data-id="${a.c}" data-mi="${a.i}" tabindex="0"><div><span class="num">${ml(a.i)}</span></div><div><span class="alt"><b>${a.c}</b></span> <span class="chip ${a.d==='m'?'good':'crit'}">${a.d==='m'?'▲ mejora':'▼ deterioro'}</span> ${a.sv?'<span class="chip crit">crítica</span>':''}<p>${esc(a.tx)}</p></div></div>`}
+
+function alertas(){
+  const all=D.al.filter(a=>a.i<=st.mi),sel=all.filter(a=>(st.alD==='todas'||a.d===st.alD)&&(st.alT==='todas'||a.t===st.alT));
+  const cnt=Array.from({length:NM},()=>[0,0]);D.al.forEach(a=>cnt[a.i][a.d==='d'?0:1]++);
+  const W=900,H=200,L=34,B=24,T=10,mx=Math.max(...cnt.map(x=>x[0]+x[1])),bw=(W-L)/NM;
+  let g='';for(let n=0;n<=mx;n+=25)g+=`<line x1="${L}" x2="${W}" y1="${T+(H-T-B)*(1-n/mx)}" y2="${T+(H-T-B)*(1-n/mx)}" stroke="var(--line)"/><text class="axis" x="${L-6}" y="${T+(H-T-B)*(1-n/mx)+4}" text-anchor="end">${n}</text>`;
+  cnt.forEach((x,i)=>{const y=n=>T+(H-T-B)*(1-n/mx),xx=L+i*bw+3,w=bw-6,on=i===st.mi;
+    g+=`<g data-tip="<b>${ml(i)}</b><br>${x[0]} deterioro · ${x[1]} mejora"><rect x="${xx}" y="${y(x[0])}" width="${w}" height="${y(0)-y(x[0])}" fill="var(--neg)" rx="2" opacity="${on?1:.75}"/><rect x="${xx}" y="${y(x[0]+x[1])}" width="${w}" height="${y(x[0])-y(x[0]+x[1])-1.5}" fill="var(--pos)" rx="2" opacity="${on?1:.75}"/></g>`;
+    if(i%3===0)g+=`<text class="axis" x="${xx+w/2}" y="${H-6}" text-anchor="middle">${mls(i)}</text>`});
+  const f=(k,v,l)=>`<button class="btn ${st[k]===v?'on':''}" data-act="alf" data-k="${k}" data-id="${v}">${l}</button>`;
+  return `<div class="panel"><div class="hd"><div><h2>Monitor de avisos</h2><p class="sub">El sistema levanta la mano solo cuando una empresa cruza un umbral o un bloque se mueve de verdad. Con antirrebote: no repite el mismo aviso.</p></div></div>
+   <div class="legend"><span><i style="border-color:var(--neg)"></i>deterioro</span><span><i style="border-color:var(--pos)"></i>mejora</span></div><svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Avisos por mes">${g}</svg></div>
+  <div class="panel"><div class="hd"><div><h2>Hasta ${ml(st.mi)}</h2><p class="sub">${sel.length} avisos</p></div><div class="row">${f('alD','todas','Todos')}${f('alD','d','▼ Deterioro')}${f('alD','m','▲ Mejora')}<span style="width:12px"></span>${f('alT','todas','Cualquier tipo')}${f('alT','cruce','Cruce de umbral')}${f('alT','bloque','Movimiento de bloque')}</div></div>
+   ${sel.sort((a,b)=>b.i-a.i||b.sv-a.sv).slice(0,st.alLim).map(alRow).join('')}${sel.length>st.alLim?`<p><button class="btn" data-act="alm">Mostrar más</button></p>`:''}</div>`;
+}
+
+function venir(){
+  const med=a=>{a=a.slice().sort((x,y)=>x-y);return a.length?a[a.length>>1]:null};
+  const blk=(k,tit,verb)=>{const cs=D.cases.filter(x=>x.k===k),con=cs.filter(x=>x.lead!=null),bs=D.baseAlert[k];
+    const rows=cs.slice().sort((a,b)=>(b.lead??-1)-(a.lead??-1)||a.i-b.i).slice(0,10).map(x=>{const c=byId[x.c];return `<tr data-act="go" data-id="${x.c}" data-mi="${x.i}" tabindex="0"><td><b>${x.c}</b></td><td>${ml(x.i)}</td><td class="num">${fmt(x.s0,0)} → ${fmt(x.s1,0)}</td><td>${spark(c.s,x.i,84,24,x.first)}</td><td>${x.lead==null?'<span class="mut">sin aviso previo</span>':`<b>${x.lead} ${x.lead===1?'mes':'meses'}</b> antes`}</td></tr>`}).join('');
+    return `<div class="panel"><h2>${tit}</h2><p class="sub">${verb}. Las cifras son de todos los casos; la tabla enseña los 10 con más antelación (los más favorables).</p>
+     <div class="kpis" style="margin:12px 0"><div class="kpi"><b>${cs.length}</b><span>casos</span></div><div class="kpi"><b>${cs.length?pct(con.length/cs.length):'–'}</b><span>con aviso previo</span><small>base: ${pct(bs)} de empresas-mes sin caso</small></div><div class="kpi"><b>${med(con.map(x=>x.lead))??'–'}</b><span>meses de antelación</span><small>mediana</small></div></div>
+     <div class="scroll"><table><thead><tr><th>Empresa</th><th>Mes del caso</th><th>Score</th><th>Trayectoria</th><th>Primer aviso</th></tr></thead><tbody>${rows}</tbody></table></div></div>`};
+  const v=D.valid,vi=v.ingresos_baja,vl=v.liquidez_sube;
+  return `<div class="panel" style="background:var(--surface-2);box-shadow:none"><h2>¿Cuándo se vio venir?</h2><p class="sub" style="font-size:13.5px;max-width:90ch">Para cada caso, cuántos meses antes de que el score cruzara el umbral ya había avisado el monitor. Un caso es una empresa que estaba claramente por encima (o por debajo) en los 6 meses previos y cruza ${CU[0]} (o ${CU[2]}). Un aviso solo cuenta si es <b>estrictamente anterior</b>.</p></div>
+  <div class="grid g2e">${blk('d','Caídas',`Score que cruza por debajo de ${CU[0]} tras estar en ${CU[0]+10} o más`)}${blk('m','Mejoras',`Score que cruza por encima de ${CU[2]} tras estar en ${CU[1]} o menos`)}</div>
+  <div class="panel"><div class="hd"><div><h2>Lo que está validado, y lo que no</h2><p class="sub">Medido con partición temporal: el aviso en t se contrasta con lo que ocurre en los 6 meses siguientes, contra alerta aleatoria de igual tasa.</p></div></div>
+   <div class="grid g2e">
+    <div class="act"><h3>Ingresos a la baja</h3><p>Cuando el bloque de ingresos cae por debajo de 40, el ${pct(vi.precision_emparejado)} de las veces los ingresos se secan (caen a menos de la mitad de su base) frente al ${pct(vi.base_emparejado)} al azar. Antelación mediana de ${vi.antelacion_mediana_observable} meses. Solo el ${pct(vi.recall_observable)} de los casos reales se captura: sirve como aviso de prioridad, no como detector completo.</p><span class="tag">${vi.alertas} avisos</span></div>
+    <div class="act"><h3>Liquidez al alza</h3><p>Cuando el bloque de liquidez supera 60, el ${pct(vl.precision_observable)} de las veces llega una mejora observable frente al ${pct(vl.base_observable)} base; en la comparación exigente (empresas parecidas) baja al ${pct(vl.precision_emparejado)} frente al ${pct(vl.base_emparejado)}. El ${pct(vl.rebota_2m)} rebota en 2 meses.</p><span class="tag">${vl.alertas} avisos</span></div>
+   </div>
+   <p class="note" style="margin-top:14px"><b>Límite honesto:</b> el score agregado sí avisa de su propio cruce de ${CU[0]}: con score &lt; ${CU[0]+7} acierta el ${pct(v.score.precision)} de las veces frente al ${pct(v.score.aleatoria)} al azar y captura el ${pct(v.score.recall)} de los casos, unos ${v.score.antel} meses antes. Pero no anticipa por sí solo eventos externos como caja agotada: esa señal vive en los bloques.</p></div>`;
+}
+
+function oport(){
+  const rows=at(),z=(c,k)=>c.Z[SI[k]][st.mi],B=(c,k)=>c.B[k][st.mi];
+  const SEG=[
+   {t:'Crédito preaprobado',who:'Bancos y fondos del marketplace de crédito',why:'El prestamista ve riesgo real y actualizado: quién paga bien este mes, no el dossier del año pasado. La empresa deja de mandar el mismo expediente a ocho bancos.',f:c=>c.s[st.mi]>=CU[2]&&!c.d[st.mi]&&c.cf[st.mi]>=.7},
+   {t:'Anticipo de cobros',who:'Financiadores de circulante',why:'Pagan bien pero van cortos de caja. El límite se recalcula cada mes con el score: cuánto, a qué precio y cuándo cerrar el grifo.',f:c=>B(c,1)>=65&&B(c,0)<=35},
+   {t:'Seguro de impago de clientes',who:'Aseguradoras de crédito',why:'Tienen clientes que no pagan a tiempo o dependen de uno solo. La prima se mueve con el score en vez de revisarse una vez al año.',f:c=>(z(c,'ar_overdue')??0)<=(ABS?-15:-.5)||(z(c,'top1_customer')??0)<=(ABS?-30:-1)},
+   {t:'Refinanciación de deuda',who:'Bancos y plataformas de deuda',why:'La deuda se lleva mucho de sus ingresos. Hay margen para renegociar plazos antes de que se convierta en problema.',f:c=>(z(c,'debt_service')??0)<=(ABS?-20:-.7)||(z(c,'leverage')??0)<=(ABS?-20:-.7)},
+   {t:'Atención prioritaria',who:'Gestores de cuenta de la propia plataforma',why:'Se ve cuándo una empresa se tuerce antes de que llame el banco. Es la palanca de retención: llegar antes que el problema.',f:c=>c.s[st.mi]<CU[0]||(c.d[st.mi]===2&&c.s[st.mi]<CU[1])},
+  ];
+  return `<div class="panel" style="background:var(--surface-2);box-shadow:none"><h2>¿Quién lo paga y por qué?</h2>
+   <p class="sub" style="font-size:13.5px;max-width:90ch"><b>Comprador principal: la propia plataforma de tesorería que ya recibe estos datos</b> (movimientos, facturas, deuda de sus clientes). No necesita pedir nada nuevo a nadie: convierte un dato que ya tiene en tres cosas.</p>
+   <ul class="clean"><li><b>Producto para sus clientes.</b> Cada CFO ve su propia salud financiera, por qué cambia y qué hacer esta semana.</li><li><b>Motor de un marketplace financiero.</b> Empareja cada empresa con la oferta que le encaja (crédito, circulante, seguro, refinanciación) y recalcula límites y precios cada mes con el score.</li><li><b>Palanca de retención y de gestión.</b> El equipo de cuentas ve quién se tuerce antes de que se vaya o falle un pago.</li></ul>
+   <p class="sub" style="margin-top:8px">Compradores secundarios: quien presta o asegura, que paga por ver riesgo actualizado. El número de empresas de abajo cambia con el mes elegido (${ml(st.mi)}).</p></div>
+  <div class="grid g3">${SEG.map(s=>{const l=rows.filter(s.f).sort((a,b)=>b.s[st.mi]-a.s[st.mi]);
+    return `<div class="panel seg"><h3>${s.t}</h3><div class="cnt">${l.length}<small style="font:500 13px var(--f-body)"> empresas</small></div><small><b>Paga:</b> ${s.who}</small><p class="sub" style="font-size:13px;color:var(--ink-2)">${s.why}</p>
+     <div>${l.slice(0,5).map(c=>`<div class="mv" data-act="go" data-id="${c.id}" tabindex="0"><b>${c.id}</b><span class="num">${fmt(c.s[st.mi],0)}</span>${chipD(c.d[st.mi])}</div>`).join('')}</div></div>`}).join('')}
+   <div class="panel seg" style="background:var(--surface-2);box-shadow:none"><h3>Cómo se usa en la demo</h3><ul class="clean"><li>Cambia el mes arriba: los segmentos se recalculan.</li><li>Entra en una empresa: verás qué señal la mueve y la acción sugerida.</li><li>Segmentos = reglas sobre el score y sus señales, pensadas para tocarlas en directo.</li></ul></div></div>`;
+}
+
+function metodo(){
+  const rs=at(),avg=inv=>{const a=rs.filter(c=>c.inv===inv).map(c=>c.s[st.mi]);return a.reduce((x,y)=>x+y,0)/a.length};
+  const bw={};D.sig.forEach(g=>bw[g.block]=(bw[g.block]||0)+g.w);
+  return `<div class="panel" style="background:var(--surface-2);box-shadow:none"><h2>Cómo se calcula el score</h2><p class="sub" style="font-size:13.5px;max-width:90ch">Sin etiquetas no hay modelo entrenado: es un índice con pesos explícitos, referencia congelada y validación temporal.</p></div>
+  <div class="grid g2e"><div class="panel"><h2>Bloques y pesos</h2><p class="sub">${ABS?'Cada señal → curva económica fija (0–100) → media ponderada':'Cada señal → percentil frente a la cartera de referencia → z → media ponderada'}</p>
+   ${D.blocks.map(b=>`<div style="margin:12px 0 4px"><span class="dot" style="background:${BC[b]}"></span><b>${BN[b]}</b> <span class="num mut">${Math.round(bw[b]*100)} %</span></div>${D.sig.filter(g=>g.block===b).map(g=>`<div class="blk" style="grid-template-columns:1fr 120px 40px"><span>${esc(g.label)}</span><div class="track"><i style="width:${g.w/.24*100}%;background:${BC[b]}"></i></div><span class="num">${fmt(g.w*100,1)}</span></div>`).join('')}`).join('')}</div>
+  <div class="grid" style="align-content:start"><div class="panel"><h2>Pasos</h2><ol class="clean" style="padding-left:20px"><li><b>Limpieza:</b> importes en moneda local (solo ratios), fechas imposibles corregidas, transferencias internas fuera, pagos reales solo de facturas pagadas.</li><li><b>Panel mensual:</b> por empresa y mes, con la caja reconstruida hacia atrás desde el saldo final y las facturas reconstruidas mes a mes.</li><li><b>Score:</b> ventana de 6 meses (y 3 para detectar baches). ${ABS?'Cada señal pasa a 0–100 por una curva económica fija y se pondera; dato ausente = 50.':'Cada señal → percentil → z; dato ausente = neutro.'}</li><li><b>Tendencia:</b> cambio esperado a 3 meses con coeficientes congelados.</li><li><b>Monitor:</b> avisos por cruce de 35/65 y por movimiento de bloque.</li></ol></div>
+  <div class="panel"><h2>Qué no hace, dicho claro</h2><ul class="clean">${ABS?`<li>El score es <b>absoluto e independiente</b>: no compara con otras empresas, así que una empresa nueva se puntúa igual. Las curvas son criterio económico, no medida; sin deuda vale 75 (bajo riesgo, sin historial de crédito). Fuera de muestra predice el deterioro futuro algo peor que la versión relativa (Spearman 0,43 frente a 0,44).</li>`:'<li>El score es <b>relativo</b>: 50 es la empresa mediana del entrenamiento.</li>'}<li>La tendencia acierta el cambio del propio score a 3 meses (R² 0,26, mejor que las líneas base), pero es sobre todo <b>reversión a la media</b>; no predice quiebras.</li><li>La anticipación real está en los <b>bloques</b> (ingresos y liquidez), no en el score agregado.</li><li>La caja se reconstruye hacia atrás y es ruidosa (≈20 % de las cuentas salen en negativo en algún mes).</li><li>La deuda es una foto final aplicada a todos los meses; sin deuda cuenta como neutro.</li><li>Las empresas sin facturas conectadas tienen menos señales de pago: hoy puntúan de media ${fmt(avg(false),1)} frente a ${fmt(avg(true),1)} las que sí las tienen.</li><li>Datos sintéticos: ninguna empresa es real.</li></ul></div></div></div>`;
+}
+
+/* ---------- shell ---------- */
+const TABS=[['cartera','Cartera'],['empresa','Empresa'],['alertas','Avisos'],['venir','¿Se vio venir?'],['oport','Oportunidades'],['metodo','Método']];
+const VIEW={cartera,empresa,alertas,venir,oport,metodo};
+function render(){
+  $('#nav').innerHTML=TABS.map(([k,l])=>`<button role="tab" aria-selected="${st.tab===k}" data-act="tab" data-id="${k}">${l}</button>`).join('');
+  $('#mo').value=st.mi;$('#prev').disabled=st.mi===0;$('#next').disabled=st.mi===LAST;
+  const y=scrollY;$('#app').innerHTML=VIEW[st.tab]();
+  if(st.tab==='empresa')wireChart(byId[st.sel]);
+  const q=$('#q');if(q&&st.focusQ){q.focus();q.setSelectionRange(q.value.length,q.value.length)}
+  const pk=$('#pick');if(pk)pk.addEventListener('change',()=>{if(byId[pk.value.trim()]){st.sel=pk.value.trim();hash();render()}});
+  scrollTo(0,y);
+}
+const hash=()=>{try{history.replaceState(null,'','#'+(st.tab==='empresa'?'empresa/'+st.sel:st.tab))}catch(e){}};
+document.addEventListener('click',e=>{
+  const t=e.target.closest('[data-act]');if(!t)return;const a=t.dataset.act,id=t.dataset.id;st.focusQ=false;
+  if(a==='tab'){st.tab=id;scrollTo(0,0)}
+  else if(a==='go'){st.sel=id;st.tab='empresa';if(t.dataset.mi)st.mi=+t.dataset.mi;st.why='nivel';scrollTo(0,0)}
+  else if(a==='flt'){const M={l0:{t:'lvl',v:0,name:'Frágiles'},l3:null,d1:{t:'dir',v:1,name:'Mejorando'},d2:{t:'dir',v:2,name:'Deteriorando'},d3:{t:'dir',v:3,name:'Baches puntuales'},all:null};
+    if(id==='l3'){st.flt=st.flt&&st.flt.id==='l3'?null:{id:'l3',t:'lvl',v:3,name:'Sólidas'}}else{const f=M[id];st.flt=f&&!(st.flt&&st.flt.id===id)?{...f,id}:null}st.limit=25;st.view='empresas'}
+  else if(a==='sort'){if(st.sort===id)st.asc=!st.asc;else{st.sort=id;st.asc=id==='id'}}
+  else if(a==='more'||a==='alm'){a==='more'?st.limit+=25:st.alLim+=40}
+  else if(a==='view'){st.view=id;st.limit=25}
+  else if(a==='grp'){st.group=id||null;st.view='empresas';st.limit=25}
+  else if(a==='why')st.why=id;
+  else if(a==='tbl')st.tbl=!st.tbl;
+  else if(a==='alf')st[t.dataset.k]=id;
+  hash();render();
+});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.matches('[data-act]'))e.target.click()});
+document.addEventListener('input',e=>{if(e.target.id==='q'){st.q=e.target.value;st.limit=25;st.focusQ=true;render()}});
+$('#mo').innerHTML=D.months.map((m,i)=>`<option value="${i}">${ml(i)}</option>`).join('');
+$('#mo').addEventListener('change',e=>{st.mi=+e.target.value;render()});
+$('#prev').addEventListener('click',()=>{if(st.mi>0){st.mi--;render()}});
+$('#next').addEventListener('click',()=>{if(st.mi<LAST){st.mi++;render()}});
+(function init(){const h=location.hash.slice(1).split('/');if(TABS.some(t=>t[0]===h[0]))st.tab=h[0];if(h[0]==='empresa'&&byId[h[1]])st.sel=h[1];render()})();
+</script>
+</body>
+</html>

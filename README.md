@@ -6,3 +6,7 @@ Team Members:
 -   Mateo
 -   Victor
 -   Alfredo
+
+## Documentación
+
+- [README_SCORE.md](README_SCORE.md): qué métricas se analizan, de qué CSV salen y cómo se compone el score.
