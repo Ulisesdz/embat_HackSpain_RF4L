@@ -1,523 +1,671 @@
-"""Panel maestro mensual (company_id x year_month).
+"""Build leakage-safe company-month features and the score input V1."""
 
-Principios:
-  - Nunca modifica los CSV RAW.
-  - Calendario completo empresa x mes: los rolling son meses reales.
-  - "Sin dato" y "cero" son cosas distintas: ratios a NaN + flags de disponibilidad.
-  - Nivel, tendencia, persistencia y recuperación, no solo la foto.
-  - Toda variable monetaria tiene su versión normalizada por tamaño.
-  - El signo RAW de balances y deuda no se interpreta como signo económico.
-"""
+from __future__ import annotations
 
-import json
+import math
+from typing import Any
+
 import numpy as np
 import pandas as pd
 
 import data_analysis.config as cfg
+from data_analysis.io import datetime, numeric, read_csv, write_json
 
-AUDIT = {}
-
-
-# =============================================================================
-# UTILIDADES
-# =============================================================================
-
-def leer(nombre, obligatorio=True):
-    path = cfg.DATA_DIR / nombre
-    if not path.exists():
-        if obligatorio:
-            raise FileNotFoundError(f"No existe {path}")
-        print(f"[WARN] Falta {path}")
-        return None
-    return pd.read_csv(path)
+AUDIT: dict[str, Any] = {}
 
 
-def num(s):
-    return pd.to_numeric(s, errors="coerce")
-
-
-def roll_mean(df, col, w, strict=True):
-    mp = w if strict else 1
-    return df.groupby("company_id")[col].transform(
-        lambda s: s.rolling(w, min_periods=mp).mean())
-
-
-def roll_sum(df, col, w, strict=False):
-    mp = w if strict else 1
-    return df.groupby("company_id")[col].transform(
-        lambda s: s.rolling(w, min_periods=mp).sum())
-
-
-def bloque_vs_bloque(df, col, w=3):
-    """Media de los últimos w meses menos la del bloque inmediatamente anterior."""
-    return df.groupby("company_id")[col].transform(
-        lambda s: s.rolling(w, min_periods=w).mean()
-        - s.shift(w).rolling(w, min_periods=w).mean())
-
-
-def pendiente(serie):
-    y = serie.dropna()
-    if len(y) < 3:
-        return np.nan
-    return np.polyfit(np.arange(len(y)), y.values, 1)[0]
-
-
-# =============================================================================
-# 1. TRANSACCIONES
-# =============================================================================
-
-def build_transacciones():
-    tx = leer("transactions.csv")
-    fechas = pd.to_datetime(tx["date"], errors="coerce")
-    AUDIT["tx_filas_raw"] = int(len(tx))
-    AUDIT["tx_fechas_invalidas"] = int(fechas.isna().sum())
-
-    tx = tx.assign(date=fechas).dropna(subset=["date", "company_id"])
-    tx = tx[(tx["date"] >= cfg.START_DATE) & (tx["date"] <= cfg.END_DATE)].copy()
-    tx["year_month"] = tx["date"].dt.to_period("M")
-    tx["amount"] = num(tx["amount"])
-    AUDIT["tx_filas_en_ventana"] = int(len(tx))
-
-    g = tx.groupby(["company_id", "year_month"], as_index=False).agg(
-        caja_ingresos=("amount", lambda s: s[s > 0].sum()),
-        caja_gastos=("amount", lambda s: abs(s[s < 0].sum())),
-        flujo_neto=("amount", "sum"),
-        n_tx=("amount", "size"),
+def _rolling_sum(panel: pd.DataFrame, column: str, window: int, minimum: int | None = None) -> pd.Series:
+    return panel.groupby("company_id")[column].transform(
+        lambda values: values.rolling(window, min_periods=minimum or window).sum()
     )
-    return g
 
 
-# =============================================================================
-# 2. FACTURAS
-# =============================================================================
-
-def clasificar_direccion(inv):
-    """Cobrable (venta) vs pagable (compra). Coincidencia exacta, nunca substring."""
-    col = cfg.detectar(inv, "direction")
-    if col is not None:
-        vals = inv[col].astype(str).str.strip().str.lower()
-        es_venta = vals.isin(cfg.VALORES_RECEIVABLE)
-        es_compra = vals.isin(cfg.VALORES_PAYABLE)
-        if es_venta.any() and es_compra.any():
-            print(f"  Dirección resuelta por '{col}' "
-                  f"({int(es_venta.sum()):,} ventas / {int(es_compra.sum()):,} compras)")
-            AUDIT["direccion_metodo"] = f"columna:{col}"
-            return es_venta
-        print(f"  [WARN] '{col}' no discrimina ventas y compras.")
-
-    if {"client_id", "supplier_id"}.issubset(inv.columns):
-        print("  Dirección resuelta por presencia de client_id / supplier_id")
-        AUDIT["direccion_metodo"] = "client_id/supplier_id"
-        return inv["client_id"].notna()
-
-    print("  [WARN] Fallback al signo del importe: las rectificativas de venta")
-    print("         se contarán como compras. Limitación documentada.")
-    AUDIT["direccion_metodo"] = "fallback_signo"
-    return num(inv["amount"]) > 0
+def _rolling_mean(panel: pd.DataFrame, column: str, window: int, minimum: int | None = None) -> pd.Series:
+    return panel.groupby("company_id")[column].transform(
+        lambda values: values.rolling(window, min_periods=minimum or window).mean()
+    )
 
 
-def marcar_impago(inv):
-    """Impago as-of el cierre de cada mes, evitando el look-ahead de 'status'."""
-    col_pago = cfg.detectar(inv, "payment_date")
-    if col_pago:
-        inv["payment_date"] = pd.to_datetime(inv[col_pago], errors="coerce")
-        fin_mes = inv["year_month"].dt.to_timestamp(how="end")
-        inv["is_overdue"] = (inv["due_date"] <= fin_mes) & (
-            inv["payment_date"].isna() | (inv["payment_date"] > fin_mes))
-        inv["dias_retraso"] = (inv["payment_date"] - inv["due_date"]).dt.days.clip(lower=0)
-        print(f"  Impago reconstruido as-of por mes desde '{col_pago}' (sin look-ahead)")
-        AUDIT["overdue_metodo"] = f"as_of:{col_pago}"
-    else:
-        inv["payment_date"] = pd.NaT
-        inv["is_overdue"] = inv["status"].astype(str).str.lower().eq("overdue")
-        inv["dias_retraso"] = np.nan
-        print("  [WARN] Sin fecha de pago: se usa 'status' (LOOK-AHEAD presente)")
-        AUDIT["overdue_metodo"] = "status_snapshot_con_lookahead"
+def _slope(values: np.ndarray) -> float:
+    valid = np.isfinite(values)
+    if valid.sum() < 3:
+        return np.nan
+    y = values[valid]
+    return float(np.polyfit(np.arange(len(y)), y, 1)[0])
+
+
+def build_transactions() -> pd.DataFrame:
+    columns = [
+        "transaction_id", "company_id", "date", "amount", "status",
+        "category", "counterparty_id",
+    ]
+    tx = read_csv("transactions.csv", audit=AUDIT, usecols=columns)
+    assert tx is not None
+    tx["date"] = datetime(tx["date"])
+    tx["amount"] = numeric(tx["amount"])
+    tx["status"] = tx["status"].str.lower()
+    tx["category"] = tx["category"].str.lower()
+
+    AUDIT["transactions:invalid_dates"] = int(tx["date"].isna().sum())
+    AUDIT["transactions:invalid_amounts"] = int(tx["amount"].isna().sum())
+    pending = tx["status"].eq("pending").fillna(False)
+    AUDIT["transactions:pending_excluded"] = int(pending.sum())
+    tx = tx[
+        tx["date"].between(cfg.START_DATE, cfg.FLOW_END_DATE)
+        & tx["company_id"].notna()
+        & tx["amount"].notna()
+        & ~pending
+    ].copy()
+    tx["year_month"] = tx["date"].dt.to_period("M")
+    tx["cash_inflow"] = tx["amount"].clip(lower=0)
+    tx["cash_outflow"] = (-tx["amount"].clip(upper=0))
+    tx["debt_service_outflow"] = np.where(
+        tx["category"].eq("debt_repayment").fillna(False), tx["cash_outflow"], 0.0
+    )
+    tx["essential_outflow"] = np.where(
+        tx["category"].isin({"salary", "tax", "utility", "social_security"}).fillna(False),
+        tx["cash_outflow"],
+        0.0,
+    )
+
+    monthly = tx.groupby(["company_id", "year_month"], as_index=False).agg(
+        cash_inflow=("cash_inflow", "sum"),
+        cash_outflow=("cash_outflow", "sum"),
+        net_cashflow=("amount", "sum"),
+        debt_service_outflow=("debt_service_outflow", "sum"),
+        essential_outflow=("essential_outflow", "sum"),
+        transaction_count=("transaction_id", "count"),
+    )
+    AUDIT["transactions:rows_in_complete_window"] = int(len(tx))
+    AUDIT["transactions:companies_in_complete_window"] = int(tx["company_id"].nunique())
+    del tx
+    return monthly
+
+
+def prepare_invoices() -> pd.DataFrame:
+    columns = [
+        "operation_id", "company_id", "document_type", "issuance_date", "due_date",
+        "payment_date", "amount", "pending_amount", "status", "counterparty_id",
+    ]
+    inv = read_csv("invoices.csv", audit=AUDIT, usecols=columns)
+    assert inv is not None
+    for column in ["issuance_date", "due_date", "payment_date"]:
+        inv[column] = datetime(inv[column])
+    inv["amount"] = numeric(inv["amount"])
+    inv["pending_amount"] = numeric(inv["pending_amount"]).fillna(inv["amount"]).abs()
+    inv["status_normalized"] = inv["status"].str.lower().str.replace(" ", "", regex=False)
+    inv["document_type_normalized"] = inv["document_type"].str.lower()
+    inv["amount_abs"] = inv["amount"].abs()
+    pending_exceeds_amount = inv["pending_amount"] > inv["amount_abs"]
+    AUDIT["invoices:pending_exceeds_amount_capped"] = int(pending_exceeds_amount.sum())
+    inv["pending_amount"] = inv["pending_amount"].clip(upper=inv["amount_abs"])
+    inv["is_receivable"] = inv["amount"] > 0
+    inv["is_payable"] = inv["amount"] < 0
+    inv["is_credit_document"] = inv["document_type_normalized"].isin(cfg.CREDIT_DOCUMENT_TYPES)
+    inv["is_paid"] = inv["status_normalized"].isin(cfg.PAID_INVOICE_STATUSES)
+
+    # payment_date is populated even for open invoices in this dataset. It is
+    # only an actual settlement event when status says that the document is paid.
+    payment_valid = (
+        inv["is_paid"]
+        & inv["payment_date"].notna()
+        & inv["payment_date"].between(cfg.START_DATE - pd.DateOffset(years=5), cfg.EXTRACTION_DATE)
+    )
+    inv["effective_payment_date"] = inv["payment_date"].where(payment_valid)
+    inv["is_open_at_cutoff"] = (
+        ~inv["is_paid"]
+        & ~inv["status_normalized"].eq("cancel")
+        & (inv["pending_amount"] > 0)
+    )
+    inv["is_overdue_at_cutoff"] = (
+        inv["is_open_at_cutoff"]
+        & inv["due_date"].notna()
+        & (inv["due_date"] < cfg.AS_OF_DATE)
+    )
+    inv["days_to_pay"] = (
+        inv["effective_payment_date"] - inv["due_date"]
+    ).dt.days.clip(lower=0)
+
+    AUDIT["invoices:invalid_issuance_dates"] = int(inv["issuance_date"].isna().sum())
+    AUDIT["invoices:invalid_due_dates"] = int(inv["due_date"].isna().sum())
+    AUDIT["invoices:negative_amount_direction_payable"] = int(inv["is_payable"].sum())
+    AUDIT["invoices:positive_amount_direction_receivable"] = int(inv["is_receivable"].sum())
+    AUDIT["invoices:credit_documents"] = int(inv["is_credit_document"].sum())
+    AUDIT["invoices:open_at_cutoff"] = int(inv["is_open_at_cutoff"].sum())
+    AUDIT["invoices:overdue_at_cutoff"] = int(inv["is_overdue_at_cutoff"].sum())
+    AUDIT["invoices:open_rows_with_populated_payment_date_ignored"] = int(
+        (inv["is_open_at_cutoff"] & inv["payment_date"].notna()).sum()
+    )
     return inv
 
 
-def build_facturas():
-    inv = leer("invoices.csv")
-    fechas = pd.to_datetime(inv["due_date"], errors="coerce")
-    AUDIT["inv_filas_raw"] = int(len(inv))
-    AUDIT["inv_fechas_invalidas"] = int(fechas.isna().sum())
+def build_invoice_monthly(inv: pd.DataFrame) -> pd.DataFrame:
+    usable = inv[
+        ~inv["is_credit_document"]
+        & inv["amount"].notna()
+        & (inv["is_receivable"] | inv["is_payable"])
+    ].copy()
 
-    inv = inv.assign(due_date=fechas).dropna(subset=["due_date", "company_id"])
-    inv = inv[(inv["due_date"] >= cfg.START_DATE) & (inv["due_date"] <= cfg.END_DATE)].copy()
-    inv["year_month"] = inv["due_date"].dt.to_period("M")
+    issued = usable[
+        usable["issuance_date"].between(cfg.START_DATE, cfg.FLOW_END_DATE)
+    ].copy()
+    issued["year_month"] = issued["issuance_date"].dt.to_period("M")
+    issued["sales_amount"] = np.where(issued["is_receivable"], issued["amount_abs"], 0.0)
+    issued["purchase_amount"] = np.where(issued["is_payable"], issued["amount_abs"], 0.0)
+    issued["sales_invoice_count"] = issued["is_receivable"].astype(int)
+    issued["purchase_invoice_count"] = issued["is_payable"].astype(int)
+    volume = issued.groupby(["company_id", "year_month"], as_index=False).agg(
+        sales_amount=("sales_amount", "sum"),
+        purchase_amount=("purchase_amount", "sum"),
+        sales_invoice_count=("sales_invoice_count", "sum"),
+        purchase_invoice_count=("purchase_invoice_count", "sum"),
+    )
 
-    inv["amount"] = num(inv["amount"])
-    inv["pending_amount"] = num(inv.get("pending_amount", inv["amount"]))
-    inv["amount_abs"] = inv["amount"].abs()
-    inv["pending_abs"] = inv["pending_amount"].abs()
-    inv["is_credit_note"] = (inv["amount"] < 0).astype(int)
-    inv["is_receivable"] = clasificar_direccion(inv)
-    inv = marcar_impago(inv)
-
-    AUDIT["inv_filas_en_ventana"] = int(len(inv))
-    AUDIT["inv_rectificativas_en_ventana"] = int(inv["is_credit_note"].sum())
-
-    # ---- Cohorte: volumen y atrapado por mes de vencimiento ----------------
-    def cohorte(mask, sufijo):
-        d = inv[mask]
-        tot = d.groupby(["company_id", "year_month"], as_index=False).agg(
-            **{f"volumen_{sufijo}": ("amount_abs", "sum"),
-               f"n_fact_{sufijo}": ("amount_abs", "size")})
-        ovr = d[d["is_overdue"]].groupby(["company_id", "year_month"], as_index=False).agg(
-            **{f"atrapado_{sufijo}": ("pending_abs", "sum"),
-               f"n_overdue_{sufijo}": ("pending_abs", "size")})
-        return tot.merge(ovr, on=["company_id", "year_month"], how="left")
-
-    ventas = cohorte(inv["is_receivable"], "ventas")
-    compras = cohorte(~inv["is_receivable"], "compras")
-
-    # ---- Stock vivo de impago (asfixia acumulada) --------------------------
-    # Evento contable: +pending en el mes de vencimiento, -pending en el de cobro.
-    # Sin fecha de pago no hay evento de salida y el stock es una cota superior.
-    def eventos(mask, nombre):
-        d = inv[mask & inv["is_overdue"]]
-        if d.empty:
-            return pd.DataFrame(columns=["company_id", "year_month", nombre])
-        entra = d.groupby(["company_id", "year_month"])["pending_abs"].sum()
-        if d["payment_date"].notna().any():
-            pagadas = d[d["payment_date"].notna()].copy()
-            pagadas["ym_pago"] = pagadas["payment_date"].dt.to_period("M")
-            sale = pagadas.groupby(["company_id", "ym_pago"])["pending_abs"].sum()
-            sale.index.names = ["company_id", "year_month"]
-            neto = entra.subtract(sale, fill_value=0)
-        else:
-            neto = entra
-        return neto.reset_index(name=nombre)
-
-    flujo_stock_cli = eventos(inv["is_receivable"], "_delta_stock_clientes")
-    flujo_stock_prov = eventos(~inv["is_receivable"], "_delta_stock_prov")
-
-    # ---- DSO real ----------------------------------------------------------
-    if inv["dias_retraso"].notna().any():
-        dso = (inv[inv["is_receivable"]]
-               .groupby(["company_id", "year_month"], as_index=False)["dias_retraso"]
-               .mean().rename(columns={"dias_retraso": "dso_dias"}))
-        dpo = (inv[~inv["is_receivable"]]
-               .groupby(["company_id", "year_month"], as_index=False)["dias_retraso"]
-               .mean().rename(columns={"dias_retraso": "dpo_dias"}))
-    else:
-        dso = pd.DataFrame(columns=["company_id", "year_month", "dso_dias"])
-        dpo = pd.DataFrame(columns=["company_id", "year_month", "dpo_dias"])
-
-    notas = inv[inv["is_credit_note"] == 1].groupby(
-        ["company_id", "year_month"], as_index=False).agg(
-        volumen_rectificativas=("amount_abs", "sum"),
-        n_rectificativas=("amount_abs", "size"))
-
-    return ventas, compras, flujo_stock_cli, flujo_stock_prov, dso, dpo, notas, inv
+    due = usable[usable["due_date"].between(cfg.START_DATE, cfg.FLOW_END_DATE)].copy()
+    due["year_month"] = due["due_date"].dt.to_period("M")
+    month_end = due["year_month"].dt.to_timestamp(how="end")
+    unpaid_at_month_end = (
+        due["is_open_at_cutoff"]
+        | (due["effective_payment_date"] > month_end)
+    )
+    due["late_receivable_amount"] = np.where(
+        due["is_receivable"] & unpaid_at_month_end,
+        np.where(due["is_open_at_cutoff"], due["pending_amount"], due["amount_abs"]),
+        0.0,
+    )
+    due["late_payable_amount"] = np.where(
+        due["is_payable"] & unpaid_at_month_end,
+        np.where(due["is_open_at_cutoff"], due["pending_amount"], due["amount_abs"]),
+        0.0,
+    )
+    due["due_receivable_amount"] = np.where(due["is_receivable"], due["amount_abs"], 0.0)
+    due["due_payable_amount"] = np.where(due["is_payable"], due["amount_abs"], 0.0)
+    due["due_receivable_count"] = due["is_receivable"].astype(int)
+    due["due_payable_count"] = due["is_payable"].astype(int)
+    due["collection_delay_days"] = due["days_to_pay"].where(due["is_receivable"])
+    due["payment_delay_days"] = due["days_to_pay"].where(due["is_payable"])
+    cohorts = due.groupby(["company_id", "year_month"], as_index=False).agg(
+        due_receivable_amount=("due_receivable_amount", "sum"),
+        late_receivable_amount=("late_receivable_amount", "sum"),
+        due_payable_amount=("due_payable_amount", "sum"),
+        late_payable_amount=("late_payable_amount", "sum"),
+        due_receivable_count=("due_receivable_count", "sum"),
+        due_payable_count=("due_payable_count", "sum"),
+        average_collection_delay_days=("collection_delay_days", "mean"),
+        average_payment_delay_days=("payment_delay_days", "mean"),
+    )
+    return volume.merge(cohorts, on=["company_id", "year_month"], how="outer")
 
 
-# =============================================================================
-# 3. ESTÁTICAS: CAJA REAL Y DEUDA
-# =============================================================================
-
-def build_caja():
-    bal = leer("balances.csv", obligatorio=False)
-    bp = leer("banking_products.csv", obligatorio=False)
-    if bal is None:
-        return pd.DataFrame(columns=["company_id"])
-
-    bal["balance"] = num(bal["balance"])
-    col_fecha = cfg.detectar(bal, "balance_date")
-    por_producto = bal.groupby("product_id").size()
-
-    if col_fecha and por_producto.max() > 1:
-        bal[col_fecha] = pd.to_datetime(bal[col_fecha], errors="coerce")
-        bal = bal[bal[col_fecha] <= cfg.END_DATE]
-        # Último snapshot POR PRODUCTO, no la fecha máxima global: los productos
-        # no reportan todos el mismo día.
-        bal = bal.sort_values(col_fecha).groupby("product_id", as_index=False).last()
-        AUDIT["balances_modo"] = f"ultimo_snapshot_por_producto:{col_fecha}"
-    elif por_producto.max() > 1:
-        AUDIT["balances_modo"] = "serie_temporal_sin_fecha_NO_DESAMBIGUABLE"
-        print("  [WARN] balances tiene varias filas por producto y ninguna fecha.")
-    else:
-        AUDIT["balances_modo"] = "snapshot_unico"
-
-    if bp is not None and {"product_id", "type"}.issubset(bp.columns):
-        bal = bal.merge(bp[["product_id", "type"]].drop_duplicates("product_id"),
-                        on="product_id", how="inner")
-        tipos = bal["type"].astype(str).str.lower()
-        mask = tipos.apply(lambda t: any(k in t for k in cfg.TIPOS_CAJA))
-        if mask.any():
-            AUDIT["balances_tipos_incluidos"] = sorted(bal.loc[mask, "type"].unique().tolist())
-            bal = bal[mask]
-        else:
-            AUDIT["balances_tipos_incluidos"] = "ninguno_reconocido_se_usan_todos"
-
-    out = bal.groupby("company_id", as_index=False).agg(caja_real=("balance", "sum"))
-    # El signo se conserva: caja negativa es información, no ruido.
-    out["caja_negativa_flag"] = (out["caja_real"] < 0).astype(int)
-    AUDIT["balances_empresas"] = int(out["company_id"].nunique())
-    AUDIT["balances_caja_mediana"] = float(out["caja_real"].median())
-    return out
+def build_calendar(company_ids: set[str]) -> pd.DataFrame:
+    index = pd.MultiIndex.from_product(
+        [sorted(company_ids), cfg.MONTHS],
+        names=["company_id", "year_month"],
+    )
+    return index.to_frame(index=False)
 
 
-def build_deuda():
-    debt = leer("debt_products.csv", obligatorio=False)
-    if debt is None:
-        return pd.DataFrame(columns=["company_id"])
-    debt["outstanding"] = num(debt["outstanding"])
-    out = debt.groupby("company_id", as_index=False).agg(
-        deuda_raw=("outstanding", "sum"), n_deudas=("outstanding", "size"))
-    out["deuda_viva"] = out["deuda_raw"].abs()
-    out["deuda_signo_negativo_flag"] = (out["deuda_raw"] < 0).astype(int)
-    AUDIT["deuda_empresas"] = int(out["company_id"].nunique())
-    return out.drop(columns=["deuda_raw"])
-
-
-# =============================================================================
-# 4. PANEL
-# =============================================================================
-
-def calendario(empresas):
-    idx = pd.MultiIndex.from_product([sorted(empresas), cfg.MONTHS],
-                                     names=["company_id", "year_month"])
-    return idx.to_frame(index=False)
-
-
-def build_panel():
-    cfg.asegurar_dirs()
-    print(f"Ventana: {cfg.START_DATE.date()} → {cfg.END_DATE.date()} "
-          f"({len(cfg.MONTHS)} buckets mensuales)")
-
-    print("\n[1/6] Transacciones...")
-    tx = build_transacciones()
-
-    print("\n[2/6] Facturas...")
-    ventas, compras, dstock_cli, dstock_prov, dso, dpo, notas, inv = build_facturas()
-
-    print("\n[3/6] Caja real y deuda...")
-    caja = build_caja()
-    deuda = build_deuda()
-
-    print("\n[4/6] Calendario completo...")
-    empresas = set(tx["company_id"]) | set(inv["company_id"])
-    companies = leer("companies.csv", obligatorio=False)
-    if companies is not None and "company_id" in companies.columns:
-        empresas |= set(companies["company_id"].dropna())
-    for extra in (caja, deuda):
-        if not extra.empty:
-            empresas |= set(extra["company_id"].dropna())
-
-    panel = calendario(empresas)
-    for extra in [tx, ventas, compras, dstock_cli, dstock_prov, dso, dpo, notas]:
-        if not extra.empty:
-            panel = panel.merge(extra, on=["company_id", "year_month"], how="left")
-
-    print(f"  {len(empresas):,} empresas x {len(cfg.MONTHS)} meses = {len(panel):,} filas")
-
-    # ---- Ceros legítimos: ausencia de fila = ausencia de actividad ---------
-    a_cero = ["caja_ingresos", "caja_gastos", "flujo_neto", "n_tx",
-              "volumen_ventas", "n_fact_ventas", "atrapado_ventas", "n_overdue_ventas",
-              "volumen_compras", "n_fact_compras", "atrapado_compras", "n_overdue_compras",
-              "_delta_stock_clientes", "_delta_stock_prov",
-              "volumen_rectificativas", "n_rectificativas"]
-    for c in a_cero:
-        if c in panel.columns:
-            panel[c] = panel[c].fillna(0)
-        else:
-            panel[c] = 0.0
+def derive_monthly(panel: pd.DataFrame, invoice_companies: set[str]) -> pd.DataFrame:
+    zero_columns = [
+        "cash_inflow", "cash_outflow", "net_cashflow", "debt_service_outflow",
+        "essential_outflow", "transaction_count", "sales_amount", "purchase_amount",
+        "sales_invoice_count", "purchase_invoice_count", "due_receivable_amount",
+        "late_receivable_amount", "due_payable_amount", "late_payable_amount",
+        "due_receivable_count", "due_payable_count",
+    ]
+    for column in zero_columns:
+        panel[column] = panel[column].fillna(0.0)
 
     panel = panel.sort_values(["company_id", "year_month"]).reset_index(drop=True)
+    panel["invoice_source_available"] = panel["company_id"].isin(invoice_companies).astype(int)
+    panel["month_active"] = (
+        (panel["transaction_count"] > 0)
+        | (panel["sales_invoice_count"] > 0)
+        | (panel["purchase_invoice_count"] > 0)
+    ).astype(int)
+    panel["month_without_inflow"] = (
+        (panel["cash_inflow"] == 0) & (panel["cash_outflow"] > 0)
+    ).astype(int)
+    panel["cashflow_margin"] = np.where(
+        panel["cash_inflow"] > 0,
+        panel["net_cashflow"] / panel["cash_inflow"],
+        np.nan,
+    )
+    panel["burn_rate"] = np.where(
+        panel["cash_inflow"] > 0,
+        panel["cash_outflow"] / panel["cash_inflow"],
+        np.nan,
+    )
 
-    print("\n[5/6] Ratios, stock y tendencias...")
-    panel = derivar(panel)
+    panel["cash_inflow_3m"] = _rolling_sum(panel, "cash_inflow", 3)
+    panel["cash_outflow_3m"] = _rolling_sum(panel, "cash_outflow", 3)
+    panel["net_cashflow_3m"] = _rolling_sum(panel, "net_cashflow", 3)
+    panel["net_cashflow_margin_3m"] = np.where(
+        panel["cash_inflow_3m"] > 0,
+        panel["net_cashflow_3m"] / panel["cash_inflow_3m"],
+        np.nan,
+    )
+    panel["burn_rate_3m"] = np.where(
+        panel["cash_inflow_3m"] > 0,
+        panel["cash_outflow_3m"] / panel["cash_inflow_3m"],
+        np.nan,
+    )
+    panel["cash_inflow_12m"] = _rolling_sum(panel, "cash_inflow", 12)
+    panel["cash_outflow_12m"] = _rolling_sum(panel, "cash_outflow", 12)
+    panel["debt_service_outflow_3m"] = _rolling_sum(panel, "debt_service_outflow", 3)
+    panel["debt_service_to_inflows_3m"] = np.where(
+        panel["cash_inflow_3m"] > 0,
+        panel["debt_service_outflow_3m"] / panel["cash_inflow_3m"],
+        np.nan,
+    )
 
-    print("\n[6/6] Normalización y confianza...")
-    for extra in (caja, deuda):
-        if not extra.empty:
-            panel = panel.merge(extra, on="company_id", how="left")
-    panel = normalizar(panel, companies)
+    group = panel.groupby("company_id", sort=False)
+    panel["net_cashflow_margin_prev_3m"] = group["net_cashflow_margin_3m"].shift(3)
+    panel["net_cashflow_change_3m"] = (
+        panel["net_cashflow_margin_3m"] - panel["net_cashflow_margin_prev_3m"]
+    )
+    panel["net_cashflow_slope_6m"] = group["cashflow_margin"].transform(
+        lambda values: values.rolling(6, min_periods=3).apply(_slope, raw=True)
+    )
+    panel["cashflow_volatility_6m"] = group["cashflow_margin"].transform(
+        lambda values: values.rolling(6, min_periods=3).std()
+    )
+    panel["months_negative_cashflow_6m"] = group["net_cashflow"].transform(
+        lambda values: (values < 0).astype(int).rolling(6, min_periods=6).sum()
+    )
+    prior_year_inflow = group["cash_inflow"].shift(12)
+    panel["inflow_growth_yoy"] = np.where(
+        prior_year_inflow > 0,
+        panel["cash_inflow"] / prior_year_inflow - 1,
+        np.nan,
+    )
+    panel["persistent_deterioration_flag"] = (
+        (panel["months_negative_cashflow_6m"] >= 4)
+        & (panel["net_cashflow_slope_6m"] < 0)
+    ).astype(int)
 
-    panel["year_month"] = panel["year_month"].astype(str)
-    panel.to_csv(cfg.PANEL_PATH, index=False)
+    for prefix, numerator, denominator, count in [
+        ("receivables", "late_receivable_amount", "due_receivable_amount", "due_receivable_count"),
+        ("payables", "late_payable_amount", "due_payable_amount", "due_payable_count"),
+    ]:
+        numerator_3m = _rolling_sum(panel, numerator, 3)
+        denominator_3m = _rolling_sum(panel, denominator, 3)
+        count_3m = _rolling_sum(panel, count, 3)
+        panel[f"overdue_{prefix}_ratio_3m"] = np.where(
+            (denominator_3m > 0) & (count_3m >= cfg.MIN_INVOICES_RATIO),
+            numerator_3m / denominator_3m,
+            np.nan,
+        )
+        panel[f"overdue_{prefix}_ratio_prev_3m"] = group[
+            f"overdue_{prefix}_ratio_3m"
+        ].shift(3)
+        panel[f"overdue_{prefix}_change_3m"] = (
+            panel[f"overdue_{prefix}_ratio_3m"]
+            - panel[f"overdue_{prefix}_ratio_prev_3m"]
+        )
+
+    panel["average_collection_delay_6m"] = _rolling_mean(
+        panel, "average_collection_delay_days", 6, minimum=2
+    )
+    panel["average_payment_delay_6m"] = _rolling_mean(
+        panel, "average_payment_delay_days", 6, minimum=2
+    )
+    panel["active_months_12m"] = _rolling_sum(panel, "month_active", 12, minimum=1)
+    panel["history_months"] = group.cumcount() + 1
+    return panel
+
+
+def build_balance_snapshot() -> pd.DataFrame:
+    balances = read_csv("balances.csv", required=False, audit=AUDIT)
+    products = read_csv("banking_products.csv", required=False, audit=AUDIT)
+    if balances is None or products is None:
+        return pd.DataFrame(columns=["company_id", "cash_balance"])
+
+    balances["balance"] = numeric(balances["balance"])
+    balances["date"] = datetime(balances["date"])
+    products["type"] = products["type"].str.lower()
+    joined = balances.merge(
+        products[["product_id", "type"]].drop_duplicates("product_id"),
+        on="product_id",
+        how="inner",
+        validate="many_to_one",
+    )
+    joined = joined[
+        joined["type"].isin(cfg.CASH_PRODUCT_TYPES)
+        & (joined["date"] <= cfg.AS_OF_DATE)
+    ].copy()
+    joined = joined.sort_values("date").drop_duplicates("product_id", keep="last")
+    joined["balance_outlier"] = joined["balance"].abs() >= cfg.BALANCE_ABS_HARD_LIMIT
+    AUDIT["balances:cash_products"] = int(len(joined))
+    AUDIT["balances:hard_outliers_excluded"] = int(joined["balance_outlier"].sum())
+    joined["valid_balance"] = joined["balance"].mask(joined["balance_outlier"])
+
+    result = joined.groupby("company_id", as_index=False).agg(
+        cash_balance=("valid_balance", lambda values: values.sum(min_count=1)),
+        cash_product_count=("product_id", "nunique"),
+        cash_balance_outlier_count=("balance_outlier", "sum"),
+    )
+    aggregate_outlier = result["cash_balance"].abs() >= cfg.BALANCE_ABS_HARD_LIMIT
+    AUDIT["balances:aggregate_hard_outliers_excluded"] = int(aggregate_outlier.sum())
+    result.loc[aggregate_outlier, "cash_balance"] = np.nan
+    result.loc[aggregate_outlier, "cash_balance_outlier_count"] += 1
+    return result
+
+
+def build_debt_snapshot() -> pd.DataFrame:
+    debt = read_csv("debt_products.csv", required=False, audit=AUDIT)
+    if debt is None:
+        AUDIT["debt:source_available"] = 0
+        return pd.DataFrame(columns=["company_id", "debt_outstanding"])
+    AUDIT["debt:source_available"] = 1
+    debt["outstanding_abs"] = numeric(debt["outstanding"]).abs()
+    debt["granted_abs"] = numeric(debt["granted"]).abs()
+    debt["liquidity_value"] = numeric(debt["liquidity"])
+    debt["type"] = debt["type"].str.lower()
+
+    base = debt.groupby("company_id", as_index=False).agg(
+        debt_outstanding=("outstanding_abs", "sum"),
+        debt_product_count=("product_id", "nunique"),
+    )
+    credit = debt[
+        debt["type"].eq("lineofcredit")
+        & (debt["granted_abs"] > 0)
+        & debt["liquidity_value"].notna()
+    ].copy()
+    credit["used_amount"] = (
+        credit["granted_abs"] - credit["liquidity_value"]
+    ).clip(lower=0, upper=credit["granted_abs"])
+    utilisation = credit.groupby("company_id", as_index=False).agg(
+        credit_used=("used_amount", "sum"),
+        credit_limit=("granted_abs", "sum"),
+    )
+    utilisation["credit_line_utilization"] = np.where(
+        utilisation["credit_limit"] > 0,
+        utilisation["credit_used"] / utilisation["credit_limit"],
+        np.nan,
+    )
+    AUDIT["debt:companies_with_credit_utilization"] = int(
+        utilisation["company_id"].nunique()
+    )
+    return base.merge(
+        utilisation[["company_id", "credit_line_utilization"]],
+        on="company_id",
+        how="left",
+    )
+
+
+def build_schedule_snapshot() -> pd.DataFrame:
+    schedule = read_csv("debt_schedule_config.csv", required=False, audit=AUDIT)
+    if schedule is None:
+        return pd.DataFrame(columns=["company_id", "upcoming_debt_balance_90d"])
+    schedule["next_payment_date"] = datetime(schedule["next_payment_date"])
+    schedule["outstanding_balance_abs"] = numeric(schedule["outstanding_balance"]).abs()
+    upper = cfg.AS_OF_DATE + pd.DateOffset(days=90)
+    due = schedule["next_payment_date"].between(cfg.AS_OF_DATE, upper)
+    return (
+        schedule[due]
+        .groupby("company_id", as_index=False)
+        .agg(upcoming_debt_balance_90d=("outstanding_balance_abs", "sum"))
+    )
+
+
+def _concentration(inv: pd.DataFrame, receivable: bool, prefix: str) -> pd.DataFrame:
+    start = cfg.AS_OF_DATE - pd.DateOffset(months=12)
+    mask = (
+        (inv["is_receivable"] if receivable else inv["is_payable"])
+        & ~inv["is_credit_document"]
+        & inv["issuance_date"].between(start, cfg.FLOW_END_DATE)
+        & inv["counterparty_id"].notna()
+    )
+    data = inv[mask].groupby(
+        ["company_id", "counterparty_id"], as_index=False
+    )["amount_abs"].sum()
+    if data.empty:
+        return pd.DataFrame(columns=["company_id"])
+    totals = data.groupby("company_id")["amount_abs"].transform("sum")
+    data["share"] = np.where(totals > 0, data["amount_abs"] / totals, np.nan)
+    rows = []
+    for company_id, values in data.groupby("company_id"):
+        shares = values["share"].dropna().sort_values(ascending=False)
+        rows.append({
+            "company_id": company_id,
+            f"top1_{prefix}_share": float(shares.iloc[0]) if len(shares) else np.nan,
+            f"top5_{prefix}_share": float(shares.head(5).sum()) if len(shares) else np.nan,
+            f"{prefix}_hhi": float((shares ** 2).sum()) if len(shares) else np.nan,
+            f"{prefix}_counterparty_count": int(len(shares)),
+        })
+    return pd.DataFrame(rows)
+
+
+def build_current_invoice_snapshot(inv: pd.DataFrame) -> pd.DataFrame:
+    current = inv[
+        inv["is_overdue_at_cutoff"]
+        & ~inv["is_credit_document"]
+        & (inv["is_receivable"] | inv["is_payable"])
+    ].copy()
+    current["days_overdue"] = (cfg.AS_OF_DATE - current["due_date"]).dt.days.clip(lower=0)
+    current["overdue_receivable"] = np.where(
+        current["is_receivable"], current["pending_amount"], 0.0
+    )
+    current["overdue_payable"] = np.where(
+        current["is_payable"], current["pending_amount"], 0.0
+    )
+    for side in ["receivable", "payable"]:
+        amount = current[f"overdue_{side}"]
+        current[f"{side}_overdue_30d"] = np.where(
+            (current["days_overdue"] >= 30) & (current["days_overdue"] < 60), amount, 0.0
+        )
+        current[f"{side}_overdue_60d"] = np.where(
+            (current["days_overdue"] >= 60) & (current["days_overdue"] < 90), amount, 0.0
+        )
+        current[f"{side}_overdue_90d"] = np.where(
+            current["days_overdue"] >= 90, amount, 0.0
+        )
+    return current.groupby("company_id", as_index=False).agg(
+        overdue_receivables_current=("overdue_receivable", "sum"),
+        overdue_payables_current=("overdue_payable", "sum"),
+        receivables_overdue_30d=("receivable_overdue_30d", "sum"),
+        receivables_overdue_60d=("receivable_overdue_60d", "sum"),
+        receivables_overdue_90d=("receivable_overdue_90d", "sum"),
+        payables_overdue_30d=("payable_overdue_30d", "sum"),
+        payables_overdue_60d=("payable_overdue_60d", "sum"),
+        payables_overdue_90d=("payable_overdue_90d", "sum"),
+    )
+
+
+def build_score_input(panel: pd.DataFrame, inv: pd.DataFrame) -> pd.DataFrame:
+    current = panel[panel["year_month"].eq(cfg.MONTHS[-1])].copy()
+    current = current.rename(columns={
+        "sales_amount": "sales_1m",
+        "purchase_amount": "purchases_1m",
+    })
+    current["sales_3m"] = (
+        panel.groupby("company_id")["sales_amount"]
+        .transform(lambda values: values.rolling(3, min_periods=3).sum())
+        .loc[current.index]
+    )
+    current["purchases_3m"] = (
+        panel.groupby("company_id")["purchase_amount"]
+        .transform(lambda values: values.rolling(3, min_periods=3).sum())
+        .loc[current.index]
+    )
+
+    for snapshot in [
+        build_balance_snapshot(),
+        build_debt_snapshot(),
+        build_schedule_snapshot(),
+        build_current_invoice_snapshot(inv),
+        _concentration(inv, True, "customer"),
+        _concentration(inv, False, "supplier"),
+    ]:
+        current = current.merge(snapshot, on="company_id", how="left", validate="one_to_one")
+
+    zero_if_source = [
+        "overdue_receivables_current", "overdue_payables_current",
+        "receivables_overdue_30d", "receivables_overdue_60d",
+        "receivables_overdue_90d", "payables_overdue_30d",
+        "payables_overdue_60d", "payables_overdue_90d",
+        "debt_outstanding", "debt_product_count", "upcoming_debt_balance_90d",
+    ]
+    for column in zero_if_source:
+        if column not in current:
+            current[column] = np.nan
+
+    has_invoices = current["invoice_source_available"].eq(1)
+    invoice_amount_columns = [column for column in zero_if_source if "debt" not in column]
+    current.loc[has_invoices, invoice_amount_columns] = current.loc[
+        has_invoices, invoice_amount_columns
+    ].fillna(0.0)
+    debt_source_available = int(AUDIT.get("debt:source_available", 0))
+    current["debt_source_available"] = debt_source_available
+    if debt_source_available:
+        current[[
+            "debt_outstanding", "debt_product_count", "upcoming_debt_balance_90d",
+        ]] = current[[
+            "debt_outstanding", "debt_product_count", "upcoming_debt_balance_90d",
+        ]].fillna(0.0)
+    current["balance_source_available"] = current["cash_product_count"].notna().astype(int)
+
+    current["cash_negative_flag"] = np.where(
+        current["cash_balance"].notna(), (current["cash_balance"] < 0).astype(float), np.nan
+    )
+    current["average_monthly_outflow_3m"] = current["cash_outflow_3m"] / 3
+    current["runway_months"] = np.where(
+        current["average_monthly_outflow_3m"] > 0,
+        current["cash_balance"] / current["average_monthly_outflow_3m"],
+        np.nan,
+    )
+    current["runway_months"] = current["runway_months"].clip(-12, 60)
+    current["overdue_receivables_to_sales"] = np.where(
+        current["sales_3m"] > 0,
+        current["overdue_receivables_current"] / current["sales_3m"],
+        np.nan,
+    )
+    current["overdue_payables_to_purchases"] = np.where(
+        current["purchases_3m"] > 0,
+        current["overdue_payables_current"] / current["purchases_3m"],
+        np.nan,
+    )
+    current["debt_to_annual_inflows"] = np.where(
+        current["cash_inflow_12m"] > 0,
+        current["debt_outstanding"] / current["cash_inflow_12m"],
+        np.nan,
+    )
+
+    current["metric_coverage"] = current[[
+        "net_cashflow_margin_3m", "runway_months", "overdue_receivables_to_sales",
+        "overdue_payables_to_purchases", "debt_to_annual_inflows",
+        "top1_customer_share",
+    ]].notna().mean(axis=1)
+    current["confidence"] = np.select(
+        [
+            (current["active_months_12m"] < cfg.MIN_ACTIVE_MONTHS)
+            | (current["metric_coverage"] < 0.4),
+            (current["active_months_12m"] < cfg.HIGH_CONFIDENCE_MONTHS)
+            | (current["metric_coverage"] < 0.7)
+            | (current["cash_balance_outlier_count"].fillna(0) > 0),
+        ],
+        ["low", "medium"],
+        default="high",
+    )
+    current["as_of_date"] = cfg.AS_OF_DATE.date().isoformat()
+    current["feature_version"] = "v1"
+
+    identifiers = [
+        "company_id", "as_of_date", "feature_version", "confidence",
+        "metric_coverage", "active_months_12m", "invoice_source_available",
+        "balance_source_available", "debt_source_available",
+        "cash_balance_outlier_count",
+    ]
+    metrics = [
+        "cash_balance", "cash_negative_flag", "runway_months",
+        "net_cashflow_margin_3m", "burn_rate_3m", "months_negative_cashflow_6m",
+        "net_cashflow_margin_prev_3m", "net_cashflow_change_3m",
+        "net_cashflow_slope_6m", "cashflow_volatility_6m", "inflow_growth_yoy",
+        "persistent_deterioration_flag", "sales_3m", "overdue_receivables_current",
+        "overdue_receivables_to_sales", "average_collection_delay_6m",
+        "receivables_overdue_30d", "receivables_overdue_60d",
+        "receivables_overdue_90d", "top1_customer_share", "top5_customer_share",
+        "customer_hhi", "purchases_3m", "overdue_payables_current",
+        "overdue_payables_to_purchases", "average_payment_delay_6m",
+        "payables_overdue_30d", "payables_overdue_60d", "payables_overdue_90d",
+        "debt_outstanding", "debt_to_annual_inflows",
+        "debt_service_to_inflows_3m", "credit_line_utilization",
+        "upcoming_debt_balance_90d", "top1_supplier_share", "top5_supplier_share",
+        "supplier_hhi",
+    ]
+    for column in identifiers + metrics:
+        if column not in current:
+            current[column] = np.nan
+    return current[identifiers + metrics].sort_values("company_id").reset_index(drop=True)
+
+
+def score_input_json(records: pd.DataFrame) -> list[dict[str, Any]]:
+    quality_columns = {
+        "confidence", "metric_coverage", "active_months_12m",
+        "invoice_source_available", "balance_source_available",
+        "debt_source_available", "cash_balance_outlier_count",
+    }
+    identity_columns = {"company_id", "as_of_date", "feature_version"}
+    payload = []
+    for raw in records.replace({np.nan: None}).to_dict(orient="records"):
+        payload.append({
+            "company_id": raw["company_id"],
+            "as_of_date": raw["as_of_date"],
+            "feature_version": raw["feature_version"],
+            "metrics": {
+                key: value for key, value in raw.items()
+                if key not in quality_columns | identity_columns
+            },
+            "data_quality": {
+                key: raw[key] for key in quality_columns
+            },
+        })
+    return payload
+
+
+def build() -> tuple[pd.DataFrame, pd.DataFrame]:
+    cfg.ensure_dirs()
+    companies = read_csv("companies.csv", audit=AUDIT)
+    assert companies is not None
+    tx_monthly = build_transactions()
+    invoices = prepare_invoices()
+    invoice_monthly = build_invoice_monthly(invoices)
+
+    company_ids = set(companies["company_id"].dropna())
+    company_ids |= set(tx_monthly["company_id"].dropna())
+    company_ids |= set(invoices["company_id"].dropna())
+    panel = build_calendar(company_ids)
+    panel = panel.merge(
+        tx_monthly, on=["company_id", "year_month"], how="left", validate="one_to_one"
+    )
+    panel = panel.merge(
+        invoice_monthly, on=["company_id", "year_month"], how="left", validate="one_to_one"
+    )
+    panel = derive_monthly(panel, set(invoices["company_id"].dropna()))
+    score_input = build_score_input(panel, invoices)
+
+    output_panel = panel.copy()
+    output_panel["year_month"] = output_panel["year_month"].astype(str)
+    output_panel.to_csv(cfg.PANEL_PATH, index=False)
+    score_input.to_csv(cfg.SCORE_INPUT_PATH, index=False)
+    write_json(cfg.SCORE_INPUT_JSON_PATH, score_input_json(score_input))
 
     AUDIT.update({
-        "ventana_inicio": str(cfg.START_DATE.date()),
-        "ventana_fin": str(cfg.END_DATE.date()),
-        "buckets_mensuales": len(cfg.MONTHS),
-        "meses_parciales_excluidos_del_score": [str(m) for m in cfg.PARTIAL_MONTHS],
-        "panel_filas": int(len(panel)),
-        "panel_columnas": int(panel.shape[1]),
-        "panel_empresas": int(panel["company_id"].nunique()),
+        "window:start": cfg.START_DATE.date().isoformat(),
+        "window:flow_end": cfg.FLOW_END_DATE.date().isoformat(),
+        "as_of_date": cfg.AS_OF_DATE.date().isoformat(),
+        "panel:companies": int(panel["company_id"].nunique()),
+        "panel:months": int(panel["year_month"].nunique()),
+        "panel:rows": int(len(panel)),
+        "score_input:rows": int(len(score_input)),
+        "score_input:high_confidence": int(score_input["confidence"].eq("high").sum()),
     })
-    cfg.AUDIT_PATH.write_text(json.dumps(AUDIT, indent=2, ensure_ascii=False),
-                              encoding="utf-8")
-
-    print(f"\nPanel: {cfg.PANEL_PATH} ({len(panel):,} filas, {panel.shape[1]} columnas)")
-    print(f"Auditoría: {cfg.AUDIT_PATH}")
-    resumen(panel)
-    return panel
-
-
-# =============================================================================
-# 5. DERIVADAS
-# =============================================================================
-
-def derivar(panel):
-    # ---- Actividad y disponibilidad ---------------------------------------
-    panel["tx_disponible"] = (panel["n_tx"] > 0).astype(int)
-    panel["ventas_disponible"] = (panel["volumen_ventas"] > 0).astype(int)
-    panel["compras_disponible"] = (panel["volumen_compras"] > 0).astype(int)
-    panel["mes_activo"] = ((panel["tx_disponible"] + panel["ventas_disponible"]
-                            + panel["compras_disponible"]) > 0).astype(int)
-
-    # ---- Burn rate: NaN cuando no hay denominador, flag aparte -------------
-    panel["mes_sin_ingresos"] = ((panel["caja_ingresos"] == 0)
-                                 & (panel["caja_gastos"] > 0)).astype(int)
-    panel["burn_rate"] = np.where(panel["caja_ingresos"] > 0,
-                                  panel["caja_gastos"] / panel["caja_ingresos"], np.nan)
-    panel["burn_rate_cap"] = panel["burn_rate"].clip(upper=cfg.BURN_RATE_CAP)
-
-    # ---- Morosidad cohorte mensual (NaN sin denominador) -------------------
-    panel["pct_clientes_morosos"] = np.where(
-        panel["volumen_ventas"] > 0,
-        100 * panel["atrapado_ventas"] / panel["volumen_ventas"], np.nan)
-    panel["pct_impagos_prov"] = np.where(
-        panel["volumen_compras"] > 0,
-        100 * panel["atrapado_compras"] / panel["volumen_compras"], np.nan)
-
-    # ---- Morosidad sobre sumas móviles (robusta a meses de pocas facturas) -
-    for nombre, num_c, den_c, nf_c in [
-        ("pct_clientes_morosos_3m", "atrapado_ventas", "volumen_ventas", "n_fact_ventas"),
-        ("pct_impagos_prov_3m", "atrapado_compras", "volumen_compras", "n_fact_compras"),
-    ]:
-        n3 = roll_sum(panel, num_c, cfg.ROLL_SHORT)
-        d3 = roll_sum(panel, den_c, cfg.ROLL_SHORT)
-        f3 = roll_sum(panel, nf_c, cfg.ROLL_SHORT)
-        ratio = np.where(d3 > 0, 100 * n3 / d3, np.nan)
-        panel[nombre] = np.where(f3 >= cfg.MIN_FACTURAS_RATIO, ratio, np.nan)
-        panel[f"n_fact_{nombre.split('_')[1]}_3m"] = f3
-
-    # ---- Stock vivo de impago ---------------------------------------------
-    panel["stock_overdue_clientes"] = (panel.groupby("company_id")["_delta_stock_clientes"]
-                                       .cumsum().clip(lower=0))
-    panel["stock_overdue_prov"] = (panel.groupby("company_id")["_delta_stock_prov"]
-                                   .cumsum().clip(lower=0))
-    panel = panel.drop(columns=["_delta_stock_clientes", "_delta_stock_prov"])
-
-    # ---- Medias móviles ----------------------------------------------------
-    for col, pref in [("flujo_neto", "flujo_neto"), ("burn_rate", "burn_rate"),
-                      ("pct_clientes_morosos_3m", "clientes_morosos"),
-                      ("pct_impagos_prov_3m", "impagos_prov")]:
-        panel[f"{pref}_3m_avg"] = roll_mean(panel, col, cfg.ROLL_SHORT)
-        panel[f"{pref}_6m_avg"] = roll_mean(panel, col, cfg.ROLL_LONG)
-        panel[f"{pref}_3m_vs_prev3m"] = bloque_vs_bloque(panel, col, cfg.ROLL_SHORT)
-
-    panel["ingresos_3m_avg"] = roll_mean(panel, "caja_ingresos", cfg.ROLL_SHORT, strict=False)
-    panel["ingresos_12m_avg"] = panel.groupby("company_id")["caja_ingresos"].transform(
-        lambda s: s.rolling(12, min_periods=3).mean())
-    panel["gastos_3m_avg"] = roll_mean(panel, "caja_gastos", cfg.ROLL_SHORT, strict=False)
-
-    # ---- Señales de recuperación (delta negativo = mejora) -----------------
-    panel["recuperacion_clientes"] = -panel["clientes_morosos_3m_vs_prev3m"]
-    panel["recuperacion_prov"] = -panel["impagos_prov_3m_vs_prev3m"]
-    panel["recuperacion_flujo"] = panel["flujo_neto_3m_vs_prev3m"]
-
-    # ---- Flags de estrés y persistencia -----------------------------------
-    flags = {
-        "flag_flujo_negativo": panel["flujo_neto"] < 0,
-        "flag_estres_prov": panel["pct_impagos_prov_3m"] >= 30,
-        "flag_estres_clientes": panel["pct_clientes_morosos_3m"] >= 30,
-        "flag_burn_alto": panel["burn_rate"] >= 1,
-    }
-    for nombre, serie in flags.items():
-        panel[nombre] = serie.fillna(False).astype(int)
-        panel[f"{nombre}_3m"] = roll_sum(panel, nombre, cfg.ROLL_SHORT, strict=True)
-        panel[f"{nombre}_6m"] = roll_sum(panel, nombre, cfg.ROLL_LONG, strict=True)
-        panel[f"persistente_{nombre}"] = (panel[f"{nombre}_3m"] == 3).astype(int)
-
-    return panel
-
-
-def normalizar(panel, companies):
-    for c in ["caja_real", "deuda_viva", "n_deudas", "caja_negativa_flag",
-              "deuda_signo_negativo_flag"]:
-        if c in panel.columns:
-            panel[c] = panel[c].fillna(0)
-        else:
-            panel[c] = 0.0
-
-    # ---- Variables escala-libre: comparables entre una pyme y un grupo -----
-    panel["flujo_relativo"] = np.where(panel["ingresos_12m_avg"] > 0,
-                                       panel["flujo_neto"] / panel["ingresos_12m_avg"], np.nan)
-    panel["flujo_relativo_3m"] = roll_mean(panel, "flujo_relativo", cfg.ROLL_SHORT)
-    panel["runway_meses"] = np.where(panel["gastos_3m_avg"] > 0,
-                                     panel["caja_real"] / panel["gastos_3m_avg"],
-                                     np.nan)
-    panel["runway_meses"] = panel["runway_meses"].clip(-12, 60)
-    panel["deuda_sobre_ingresos"] = np.where(panel["ingresos_12m_avg"] > 0,
-                                             panel["deuda_viva"] / (panel["ingresos_12m_avg"] * 12),
-                                             np.nan)
-    panel["stock_prov_sobre_ingresos"] = np.where(panel["ingresos_12m_avg"] > 0,
-                                                  panel["stock_overdue_prov"] / panel["ingresos_12m_avg"],
-                                                  np.nan)
-    panel["stock_clientes_sobre_ingresos"] = np.where(panel["ingresos_12m_avg"] > 0,
-                                                      panel["stock_overdue_clientes"] / panel["ingresos_12m_avg"],
-                                                      np.nan)
-
-    # ---- Tendencia y volatilidad ------------------------------------------
-    g = panel.groupby("company_id")
-    panel["flujo_pendiente_6m"] = g["flujo_relativo"].transform(
-        lambda s: s.rolling(cfg.ROLL_LONG, min_periods=3).apply(pendiente, raw=False))
-    panel["flujo_volatilidad_6m"] = g["flujo_relativo"].transform(
-        lambda s: s.rolling(cfg.ROLL_LONG, min_periods=3).std())
-    panel["flujo_yoy"] = panel["flujo_relativo"] - g["flujo_relativo"].shift(12)
-
-    # ---- Confianza ---------------------------------------------------------
-    panel["mes_idx"] = g.cumcount() + 1
-    panel["meses_activos_acum"] = g["mes_activo"].cumsum()
-    fin_mes = pd.PeriodIndex(panel["year_month"]).to_timestamp(how="end")
-    panel["mes_parcial"] = pd.PeriodIndex(panel["year_month"]).isin(cfg.PARTIAL_MONTHS).astype(int)
-    panel["morosidad_censurada"] = (
-        (cfg.EXTRACTION_DATE - fin_mes).days < cfg.DIAS_MADURACION).astype(int)
-    panel["confianza"] = np.select(
-        [panel["meses_activos_acum"] < 6,
-         panel["meses_activos_acum"] < cfg.MIN_MESES_HISTORIA],
-        ["baja", "media"], default="alta")
-    panel.loc[(panel["morosidad_censurada"] == 1) & (panel["confianza"] == "alta"),
-              "confianza"] = "media"
-    panel.loc[panel["mes_parcial"] == 1, "confianza"] = "baja"
-
-    if companies is not None:
-        col_sector = cfg.detectar(companies, "sector")
-        col_grupo = cfg.detectar(companies, "group")
-        cols = ["company_id"] + [c for c in (col_sector, col_grupo) if c]
-        extra = companies[cols].drop_duplicates("company_id").copy()
-        if col_sector:
-            extra = extra.rename(columns={col_sector: "sector"})
-        if col_grupo:
-            extra = extra.rename(columns={col_grupo: "group_id"})
-        panel = panel.merge(extra, on="company_id", how="left")
-
-    return panel
-
-
-# =============================================================================
-# 6. RESUMEN
-# =============================================================================
-
-def resumen(panel):
-    activas = panel.groupby("company_id")["mes_activo"].sum().sort_values(ascending=False)
-    emp = activas.index[0]
-    cols = ["year_month", "flujo_relativo_3m", "runway_meses", "burn_rate",
-            "pct_clientes_morosos_3m", "pct_impagos_prov_3m",
-            "stock_prov_sobre_ingresos", "confianza"]
-    print(f"\n--- TRAYECTORIA: {emp} ---")
-    print(panel[panel["company_id"] == emp][cols].to_string(index=False))
-
-    print("\n--- COBERTURA ---")
-    print(f"  Meses activos por empresa (media): {activas.mean():.1f} de {len(cfg.MONTHS)}")
-    print(f"  Morosidad cliente no fiable: {panel['pct_clientes_morosos_3m'].isna().mean()*100:.1f}% de filas")
-    print(f"  Morosidad proveedor no fiable: {panel['pct_impagos_prov_3m'].isna().mean()*100:.1f}% de filas")
-    print(f"  Confianza: {dict(panel['confianza'].value_counts())}")
+    write_json(cfg.AUDIT_PATH, AUDIT)
+    print(f"Panel mensual: {cfg.PANEL_PATH} ({panel.shape[0]:,} x {panel.shape[1]})")
+    print(f"Input V1: {cfg.SCORE_INPUT_PATH} ({score_input.shape[0]:,} x {score_input.shape[1]})")
+    return panel, score_input
 
 
 if __name__ == "__main__":
-    build_panel()
+    build()
