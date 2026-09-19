@@ -1,0 +1,104 @@
+{
+  "criterios_oro": {
+    "min_meses": 12,
+    "max_sin_categoria": 0.5
+  },
+  "anclajes": {
+    "m01_runway_meses": {
+      "transformacion": "log",
+      "percentil_cero": 10,
+      "percentil_cien": 90,
+      "valor_cero": 0.0024662877104911136,
+      "valor_cien": 2.621292988999884,
+      "n_calibracion": 6618
+    },
+    "m02_flujo_relativo_3m": {
+      "transformacion": "lin",
+      "percentil_cero": 10,
+      "percentil_cien": 90,
+      "valor_cero": -0.49552609822842186,
+      "valor_cien": 0.44799636021557365,
+      "n_calibracion": 6436
+    },
+    "m03_pct_dias_negativo": {
+      "transformacion": "lin",
+      "percentil_cero": 95,
+      "percentil_cien": 0,
+      "valor_cero": 0.8707526881720422,
+      "valor_cien": 0.0,
+      "n_calibracion": 6622
+    },
+    "m04_ratio_devoluciones": {
+      "transformacion": "lin",
+      "percentil_cero": 99,
+      "percentil_cien": 0,
+      "valor_cero": 0.1775389367291308,
+      "valor_cien": 0.0,
+      "n_calibracion": 6379
+    },
+    "m05_dso_dias": {
+      "transformacion": "lin",
+      "percentil_cero": 90,
+      "percentil_cien": 10,
+      "valor_cero": 73.05110491503072,
+      "valor_cien": 0.20920839329332108,
+      "n_calibracion": 2747
+    },
+    "m06_stock_clientes_rel": {
+      "transformacion": "log",
+      "percentil_cero": 90,
+      "percentil_cien": 0,
+      "valor_cero": 2.055109960735254,
+      "valor_cien": 0.0,
+      "n_calibracion": 6436
+    },
+    "m07_cobertura_ineludible": {
+      "transformacion": "log",
+      "percentil_cero": 10,
+      "percentil_cien": 90,
+      "valor_cero": 0.8779257043006806,
+      "valor_cien": 4.977460811890694,
+      "n_calibracion": 5970
+    },
+    "m08_stock_proveedores_rel": {
+      "transformacion": "log",
+      "percentil_cero": 90,
+      "percentil_cien": 0,
+      "valor_cero": 1.837912824381673,
+      "valor_cien": 0.0,
+      "n_calibracion": 6436
+    },
+    "m09_servicio_deuda": {
+      "transformacion": "lin",
+      "percentil_cero": 95,
+      "percentil_cien": 0,
+      "valor_cero": 0.41459065487948504,
+      "valor_cien": 0.0,
+      "n_calibracion": 6379
+    },
+    "m10_coste_financiero": {
+      "transformacion": "lin",
+      "percentil_cero": 95,
+      "percentil_cien": 0,
+      "valor_cero": 0.03767516011959177,
+      "valor_cien": 0.0,
+      "n_calibracion": 6379
+    },
+    "m11_volatilidad_6m": {
+      "transformacion": "log",
+      "percentil_cero": 90,
+      "percentil_cien": 10,
+      "valor_cero": 1.8235412283798134,
+      "valor_cien": 0.049121861629663054,
+      "n_calibracion": 5472
+    },
+    "m12_tendencia_cobros_6m": {
+      "transformacion": "lin",
+      "percentil_cero": 10,
+      "percentil_cien": 80,
+      "valor_cero": -0.4380841080529544,
+      "valor_cien": 0.17625992933155005,
+      "n_calibracion": 6623
+    }
+  }
+}
