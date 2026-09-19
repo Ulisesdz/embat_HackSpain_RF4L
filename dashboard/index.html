@@ -168,7 +168,7 @@ svg circle[data-id]{cursor:pointer}
   <header class="topbar">
     <div><p class="eyebrow">Private company intelligence</p><h1 id="pageTitle">Cartera · seis preguntas</h1></div>
     <div class="top-actions">
-      <input id="llm-key" class="apikey" type="password" placeholder="API key OpenAI · solo Agente + LLM" autocomplete="off">
+      <input id="llm-key" class="apikey" type="password" placeholder="API key Gemini (AI Studio)" autocomplete="off">
       <span class="key-status" id="llm-key-status">Sin key: el LLM no se llama</span>
     </div>
   </header>
@@ -483,14 +483,14 @@ async function lanzarBrief(id, modo){
   if(!r||!slot) return;
   if(modo==='llm' && !claveUI()){
     pintarBrief(r, {
-      vista:'pyme', src:'sin-clave', situacion:'El LLM no se ha llamado. Pega una API key de OpenAI en la barra de arriba (se queda en este navegador) y pulsa otra vez Agente + LLM.',
+      vista:'pyme', src:'sin-clave', situacion:'El LLM no se ha llamado. Pega la API key de Gemini (AI Studio) arriba y pulsa otra vez Agente + LLM.',
       tesoreria:'Plan de acciones es plantilla + catálogo: siempre dirá lo mismo. El modelo solo corre en Agente + LLM, y solo con key.',
       limites:'Sin key no hay red, no hay tokens y no hay redacción nueva.',
       acciones:[], teoria:[], impacto:[], herramientas:[],
       aviso:'Sin API key.'
     });
     document.getElementById('llm-key')?.focus();
-    toast('Pega la API key arriba para el LLM');
+    toast('Pega la key de Gemini arriba');
     return;
   }
   if(btn){ btn.disabled=true; btn.textContent=modo==='llm'?'Agente trabajando…':'Generando…'; }
@@ -515,7 +515,7 @@ async function lanzarBrief(id, modo){
         b.src=j.fuente||b.src;
         b.aviso=j.aviso||'';
         if(modo==='llm' && j.fuente==='agente') toast('Agente con LLM');
-        if(modo==='llm' && j.fuente!=='agente') toast(j.aviso||'El LLM no se usó');
+        if(modo==='llm' && j.fuente!=='agente') toast((j.aviso&&j.aviso.indexOf('OpenAI')>=0)?'Servidor viejo: relanza python -m src.brief_server':(j.aviso||'Gemini no se usó'));
       } else if(modo==='llm') b.aviso='El servidor no respondió. python -m src.brief_server';
     }catch(e){
       if(modo==='llm') b.aviso='Sin servidor. python -m src.brief_server y recarga http://127.0.0.1:8765/';

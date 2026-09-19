@@ -5,10 +5,7 @@ Una sola lectura del score, tres apartados. El LLM no recalcula.
 from __future__ import annotations
 
 import json
-import os
 import re
-import urllib.error
-import urllib.request
 
 import pandas as pd
 
@@ -215,44 +212,22 @@ def _parse_bloques(raw):
 
 
 def render_llm(f, key=None, url=None, model=None):
-    url = url or os.environ.get("LLM_URL", "https://api.openai.com/v1/chat/completions")
-    model = model or os.environ.get("LLM_MODEL", "gpt-4o-mini")
-    key = key or os.environ.get("OPENAI_API_KEY") or os.environ.get("LLM_API_KEY")
-    if not key:
-        raise RuntimeError("Falta la API key.")
-    body = {
-        "model": model,
-        "temperature": 0.2,
-        "messages": [
+    import src.llm_cliente as llm
+    raw = llm.completar(
+        [
             {"role": "system", "content": SISTEMA_LLM},
             {"role": "user", "content": json.dumps(f, ensure_ascii=False)},
         ],
-    }
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(body).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {key}",
-        },
-        method="POST",
+        key=key, url=url, model=model,
     )
-    try:
-        with urllib.request.urlopen(req, timeout=45) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        err = exc.read().decode("utf-8", errors="replace")[:240]
-        raise RuntimeError(f"HTTP {exc.code}: {err}") from exc
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"LLM no disponible: {exc}") from exc
-    content = data["choices"][0]["message"]["content"]
-    bloques = _parse_bloques(content)
+    bloques = _parse_bloques(raw)
     bloques["workspace"] = render_plantilla(f)["workspace"]
     return bloques
 
 
 def hay_clave_llm(key=None):
-    return bool(key or os.environ.get("OPENAI_API_KEY") or os.environ.get("LLM_API_KEY"))
+    import src.llm_cliente as llm
+    return llm.hay_clave(key)
 
 
 def brief_api(company_id, usar_llm=True, exp=None, fin=None, api_key=None):

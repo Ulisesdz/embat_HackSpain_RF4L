@@ -80,7 +80,10 @@ python -m src.brief_server
 ```
 
 http://127.0.0.1:8765/ — **Plan de acciones** corre ficha + RAG + catálogo sin
-red. **Agente + LLM** redacta encima (key en la cabecera). No hay batch.
+red. **Agente + LLM** redacta con Gemini: pega la key de
+[aistudio.google.com](https://aistudio.google.com) en la cabecera (vale
+`AIza…` o `AQ.…`). Modelo
+`gemini-3-flash-preview` (`google-genai`). No hay batch.
 
 `evaluate_anticipation` va **después** del motor: mira al futuro de cada mes.
 Si viviera dentro, el archivo del score dejaría de ser causal.

@@ -12,13 +12,11 @@ No puede inventar un id de acción ni un delta de score.
 from __future__ import annotations
 
 import json
-import os
 import re
-import urllib.error
-import urllib.request
 from pathlib import Path
 
 import src.brief_cliente as brief
+import src.llm_cliente as llm
 import src.playbook_acciones as playbook
 
 TEORIA_PATH = Path("docs") / "TEORIA_PYME.md"
@@ -226,32 +224,13 @@ def _aplicar_acciones_llm(parsed, pack):
 
 
 def _llm_redacta(f, pack, key, url=None, model=None):
-    url = url or os.environ.get("LLM_URL", "https://api.openai.com/v1/chat/completions")
-    model = model or os.environ.get("LLM_MODEL", "gpt-4o-mini")
-    body = {
-        "model": model,
-        "temperature": 0.2,
-        "messages": [
+    raw = llm.completar(
+        [
             {"role": "system", "content": SISTEMA},
             {"role": "user", "content": prompt_usuario(f, pack)},
         ],
-    }
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(body).encode("utf-8"),
-        headers={"Content-Type": "application/json",
-                 "Authorization": f"Bearer {key}"},
-        method="POST",
+        key=key, url=url, model=model,
     )
-    try:
-        with urllib.request.urlopen(req, timeout=45) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        err = exc.read().decode("utf-8", errors="replace")[:240]
-        raise RuntimeError(f"HTTP {exc.code}: {err}") from exc
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"LLM no disponible: {exc}") from exc
-    raw = data["choices"][0]["message"]["content"]
     text = re.sub(r"^```(?:json)?\s*|\s*```$", "", str(raw).strip(), flags=re.I)
     parsed = json.loads(text)
     bloques = brief._parse_bloques(parsed)
@@ -265,13 +244,21 @@ def plan(company_id, usar_llm=True, exp=None, fin=None, api_key=None):
     base = brief.render_plantilla(f)
     aviso = ""
     fuente = "plantilla+herramientas"
-    if usar_llm and brief.hay_clave_llm(api_key):
+    if usar_llm and llm.hay_clave(api_key):
         try:
             bloques = _llm_redacta(f, pack, key=api_key)
             base.update(bloques)
             fuente = "agente"
         except (RuntimeError, ValueError, json.JSONDecodeError, KeyError) as exc:
-            aviso = f"El LLM falló ({exc}). Quedan plantilla + herramientas."
+            txt = str(exc)
+            if "openai.com" in txt.lower() or "incorrect api key" in txt.lower():
+                aviso = (
+                    "Esa petición fue a OpenAI (servidor viejo). "
+                    "Cierra todas las terminales de python y lanza "
+                    "python -m src.brief_server. La key AQ.… es de Gemini."
+                )
+            else:
+                aviso = f"Gemini falló ({txt}). Quedan plantilla + herramientas."
     elif usar_llm:
         aviso = "Sin API key: plantilla + herramientas locales (RAG y catálogo)."
     return {

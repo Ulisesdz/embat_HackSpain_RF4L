@@ -17,7 +17,7 @@ import src.brief_cliente as brief
 import src.config as cfg
 
 HOST = "127.0.0.1"
-PORT = int(os.environ.get("BRIEF_PORT", "8765"))
+PORT = int(os.environ.get("BRIEF_PORT", "8775"))
 _EXP = None
 _FIN = None
 
@@ -113,7 +113,7 @@ def main():
     if httpd is None:
         raise SystemExit(f"Puertos {PORT}-{PORT+9} ocupados. Cierra el servidor viejo.")
     print(f"Interfaz: http://{HOST}:{port}/", flush=True)
-    print("POST /api/brief · ficha + RAG + catálogo. La key es opcional.", flush=True)
+    print("LLM: Gemini (google-genai). No se llama a OpenAI.", flush=True)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
