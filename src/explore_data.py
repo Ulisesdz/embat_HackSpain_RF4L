@@ -5,9 +5,8 @@ sesgos que los datos no permiten corregir. Genera data_quality_report.txt.
 """
 
 import pandas as pd
-import numpy as np
 
-import data_analysis.config as cfg
+import src.config as cfg
 
 LINEAS = []
 
@@ -38,7 +37,7 @@ def auditar_fechas(df, col, nombre):
     n_despues = int((validas > cfg.END_DATE).sum())
     n_dentro = len(validas) - n_antes - n_despues
 
-    log(f"--- {nombre} · columna '{col}' ---")
+    log(f"--- {nombre} Â· columna '{col}' ---")
     log(f"  Filas originales:           {n0:>9,}")
     log(f"  No parseables (NaT):        {n_nat:>9,}  ({n_nat/max(n0,1)*100:5.2f}%)")
     if n_nat:
@@ -123,7 +122,7 @@ def auditar_facturas(inv):
         log(f"  'concept' (top 10, orientativo): "
             f"{dict(inv['concept'].astype(str).str.lower().value_counts().head(10))}")
     a_neg = pd.to_numeric(inv["amount"], errors="coerce") < 0
-    log(f"  amount < 0: {int(a_neg.sum()):,} ({a_neg.mean()*100:.1f}%)  ← si document_type no")
+    log(f"  amount < 0: {int(a_neg.sum()):,} ({a_neg.mean()*100:.1f}%)  â† si document_type no")
     log(f"    confirma que esto son rectificativas, NO se debe llamar así en el pipeline;")
     log(f"    lo más probable es que sea la convención de signo de la dirección.")
     log()
@@ -193,7 +192,7 @@ def auditar_balances(bal, banking):
     log(f"  Filas por product_id: mediana={por_producto.median():.0f} "
         f"máx={por_producto.max():.0f}")
     if por_producto.max() > 1:
-        log("  SERIE TEMPORAL: sumar sin filtrar multiplica la caja por el nº de snapshots.")
+        log("  SERIE TEMPORAL: sumar sin filtrar multiplica la caja por el nÂº de snapshots.")
         log(f"    Columna de fecha: {col_fecha or 'NINGUNA → no se puede desambiguar'}")
     else:
         log("  Snapshot único por producto: la suma directa es válida.")
@@ -248,13 +247,71 @@ def auditar_deuda(debt):
 
 
 # =============================================================================
+# SUCIEDAD QUE NO ES "COLUMNA VACÍA"
+# =============================================================================
+
+def auditar_suciedad(tx, inv, companies, bal):
+    log("=" * 74)
+    log("SUCIEDAD: FECHAS, CEROS, TIPOS DE CAMBIO, ETIQUETAS")
+    log("=" * 74)
+
+    if tx is not None:
+        dt = pd.to_datetime(tx["date"], errors="coerce")
+        if "value_date" in tx.columns:
+            vd = pd.to_datetime(tx["value_date"], errors="coerce")
+            log(f"  transactions.date:        {dt.min()} → {dt.max()}")
+            log(f"  transactions.value_date:  {vd.min()} → {vd.max()}")
+            log(f"    value_date en año â‰¥ 2030 o < 2020: "
+                f"{int(((vd.dt.year < 2020) | (vd.dt.year >= 2030)).sum()):,}")
+            log("    El pipeline usa `date` (contable), no value_date.")
+        if "status" in tx.columns:
+            log(f"  transactions.status: {dict(tx['status'].astype(str).value_counts(dropna=False))}")
+        if "accounting_status" in tx.columns:
+            log(f"  accounting_status DISCARDED: "
+                f"{int(tx['accounting_status'].astype(str).eq('DISCARDED').sum()):,} "
+                f"(se CONSERVAN: es etiqueta de conciliación, no movimiento falso)")
+        a = pd.to_numeric(tx["amount"], errors="coerce")
+        log(f"  transactions amount==0: {int((a == 0).sum()):,}")
+        if "exchange_rate" in tx.columns:
+            er = pd.to_numeric(tx["exchange_rate"], errors="coerce")
+            log(f"  tx exchange_rate == 1: {int((er == 1).sum()):,} / {len(tx):,}")
+            log(f"  tx exchange_rate fuera de [{cfg.EXCHANGE_RATE_MIN}, {cfg.EXCHANGE_RATE_MAX}]: "
+                f"{int((er.notna() & ~er.between(cfg.EXCHANGE_RATE_MIN, cfg.EXCHANGE_RATE_MAX)).sum()):,}")
+            log("  POLÍTICA: no convertir transacciones a EUR. amount ya está en")
+            log("  moneda de la cuenta; en no-EUR el tipo es 1 en la mayoría.")
+
+    if inv is not None:
+        due = pd.to_datetime(inv["due_date"], errors="coerce")
+        pay = pd.to_datetime(inv["payment_date"], errors="coerce")
+        log(f"  invoices.due_date rango: {due.min()} → {due.max()}")
+        log(f"    vencimientos año â‰¤ 2005 o â‰¥ 2040: "
+            f"{int(((due.dt.year <= 2005) | (due.dt.year >= 2040)).sum()):,}")
+        log(f"  invoices.payment_date rango: {pay.min()} → {pay.max()}")
+        log("    (se reparan: due imposible → emisión+30d; cobro futuro/previo se recorta)")
+
+    if companies is not None and "country" in companies.columns:
+        raw = companies["country"].astype(str).str.strip().str.upper()
+        log(f"  companies.country nulo: {int(companies['country'].isna().mean()*100)}%")
+        log(f"  companies.country valores: {dict(raw.value_counts().head(15))}")
+        log("    Variantes ESPAÑA/ESPANYA/SPAIN -> ES. No entra al score.")
+        if "currency" in companies.columns:
+            log(f"  companies.currency: {dict(companies['currency'].value_counts())}")
+
+    if bal is not None:
+        vacias = [c for c in bal.columns if bal[c].isna().mean() >= 0.99]
+        log(f"  balances columnas â‰¥99% nulas: {vacias or 'ninguna'}")
+        log("    `available` está 100% vacío: no se usa. El runway usa `balance`.")
+    log()
+
+
+# =============================================================================
 # MAIN
 # =============================================================================
 
 def main():
     cfg.asegurar_dirs()
     log("=" * 74)
-    log("INFORME DE CALIDAD DE DATOS · EMBAT X-RAY")
+    log("INFORME DE CALIDAD DE DATOS Â· EMBAT X-RAY")
     log(f"Ventana declarada: {cfg.START_DATE.date()} → {cfg.END_DATE.date()}")
     log(f"Buckets mensuales inclusivos: {len(cfg.MONTHS)}")
     log(f"Mes parcial (extracción {cfg.EXTRACTION_DATE.date()}): "
@@ -270,6 +327,7 @@ def main():
         auditar_facturas(inv)
     auditar_balances(leer("balances.csv"), leer("banking_products.csv"))
     auditar_deuda(leer("debt_products.csv"))
+    auditar_suciedad(tx, inv, leer("companies.csv"), leer("balances.csv"))
 
     log("=" * 74)
     log("SESGOS CONOCIDOS")

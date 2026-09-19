@@ -10,7 +10,7 @@ import sys
 import numpy as np
 import pandas as pd
 
-import data_analysis.config as cfg
+import src.config as cfg
 
 ERRORES = 0
 
@@ -58,8 +58,11 @@ def main():
         "pct_clientes_morosos", "pct_impagos_prov",
         "pct_clientes_morosos_3m", "pct_impagos_prov_3m",
         "flujo_neto_3m_avg", "flujo_neto_6m_avg",
-        "clientes_morosos_3m_avg", "impagos_prov_3m_avg",
         "caja_reportada", "mes_parcial", "confianza",
+        "refund_rate_3m", "debt_service_3m",
+        "volumen_vencido_ventas", "volumen_vencido_compras",
+        "stock_overdue_clientes", "stock_overdue_prov",
+        "observado",
     ]
     if not check_required(df, required):
         sys.exit(1)
@@ -101,6 +104,31 @@ def main():
         ok("No hay duplicados company_id + year_month")
 
     # -------------------------------------------------------------------------
+    # Ventana observada: 0 solo dentro; NaN fuera
+    # -------------------------------------------------------------------------
+    if "observado" in df.columns:
+        obs = df["observado"].astype(bool)
+        vol = [
+            "caja_ingresos", "caja_gastos", "flujo_neto",
+            "volumen_ventas", "volumen_compras",
+        ]
+        for c in vol:
+            if c not in df.columns:
+                continue
+            fuera_con_dato = (~obs) & df[c].notna()
+            dentro_sin_dato = obs & df[c].isna()
+            if fuera_con_dato.any():
+                fail(f"{c}: {int(fuera_con_dato.sum())} valores fuera de la ventana observada")
+            elif dentro_sin_dato.any():
+                fail(f"{c}: {int(dentro_sin_dato.sum())} NaN dentro de la ventana observada")
+            else:
+                ok(f"{c}: 0 dentro de la ventana, NaN fuera")
+        if int(obs.sum()) == 0:
+            fail("Ninguna fila marcada como observada")
+        else:
+            ok(f"Ventana observada: {int(obs.sum()):,} / {len(df):,} filas")
+
+    # -------------------------------------------------------------------------
     # Identidad de caja
     # -------------------------------------------------------------------------
     mismatch = ~np.isclose(
@@ -121,10 +149,15 @@ def main():
         "pct_clientes_morosos", "pct_impagos_prov",
         "pct_clientes_morosos_3m", "pct_impagos_prov_3m",
     ]
+    # Tolerancia de coma flotante: una suma móvil donde numerador == denominador
+    # devuelve 100.00000000000004. Es ruido de float64, no un error de cohorte,
+    # y recortar el dato en el panel escondería los que sí lo son.
+    TOL_RATIO = 1e-6
     for c in ratio_cols:
-        bad = df[c].notna() & ((df[c] < 0) | (df[c] > 100))
+        bad = df[c].notna() & ((df[c] < -TOL_RATIO) | (df[c] > 100 + TOL_RATIO))
         if bad.any():
-            fail(f"{c}: {int(bad.sum())} valores fuera de [0,100]")
+            exceso = float((df.loc[bad, c] - 100).abs().max())
+            fail(f"{c}: {int(bad.sum())} valores fuera de [0,100] (exceso máx {exceso:.4g})")
         else:
             ok(f"{c}: rango válido")
 
@@ -135,7 +168,6 @@ def main():
         "caja_ingresos", "caja_gastos", "volumen_ventas",
         "atrapado_ventas", "volumen_compras", "atrapado_compras",
         "stock_overdue_clientes", "stock_overdue_prov",
-        "n_tx", "n_fact_ventas", "n_fact_compras",
     ]
     for c in nonnegative:
         if c not in df.columns:
@@ -164,8 +196,6 @@ def main():
     # -------------------------------------------------------------------------
     strict_3m = [
         "flujo_neto_3m_avg",
-        "clientes_morosos_3m_avg",
-        "impagos_prov_3m_avg",
     ]
     strict_6m = ["flujo_neto_6m_avg"]
 
@@ -191,19 +221,86 @@ def main():
     # -------------------------------------------------------------------------
     # Disciplina de denominadores
     # -------------------------------------------------------------------------
-    if "volumen_ventas" in df:
-        bad = (df["volumen_ventas"] == 0) & df["pct_clientes_morosos"].notna()
+    if "volumen_vencido_ventas" in df:
+        bad = (df["volumen_vencido_ventas"] == 0) & df["pct_clientes_morosos"].notna()
         if bad.any():
-            fail("pct_clientes_morosos no es NA cuando volumen_ventas == 0")
+            fail("pct_clientes_morosos no es NA cuando volumen_vencido_ventas == 0")
         else:
-            ok("Morosidad de clientes respeta denominador")
+            ok("Morosidad de clientes respeta denominador de vencimiento")
+        overflow = (
+            df["volumen_vencido_ventas"].gt(0)
+            & df["atrapado_ventas"].gt(df["volumen_vencido_ventas"] + 1e-4)
+        )
+        if overflow.any():
+            fail(f"atrapado_ventas > volumen_vencido_ventas en {int(overflow.sum())} filas")
+        else:
+            ok("Cohorte clientes: atrapado <= vencido")
 
-    if "volumen_compras" in df:
-        bad = (df["volumen_compras"] == 0) & df["pct_impagos_prov"].notna()
+    if "volumen_vencido_compras" in df:
+        bad = (df["volumen_vencido_compras"] == 0) & df["pct_impagos_prov"].notna()
         if bad.any():
-            fail("pct_impagos_prov no es NA cuando volumen_compras == 0")
+            fail("pct_impagos_prov no es NA cuando volumen_vencido_compras == 0")
         else:
-            ok("Morosidad de proveedores respeta denominador")
+            ok("Morosidad de proveedores respeta denominador de vencimiento")
+        overflow = (
+            df["volumen_vencido_compras"].gt(0)
+            & df["atrapado_compras"].gt(df["volumen_vencido_compras"] + 1e-4)
+        )
+        if overflow.any():
+            fail(f"atrapado_compras > volumen_vencido_compras en {int(overflow.sum())} filas")
+        else:
+            ok("Cohorte proveedores: atrapado <= vencido")
+
+    # -------------------------------------------------------------------------
+    # Métricas de anticipación: rangos acotados por construcción
+    # -------------------------------------------------------------------------
+    acotadas = [
+        ("share_stock_clientes_antiguo", 0.0, 1.0),
+        ("share_stock_prov_antiguo", 0.0, 1.0),
+        ("top1_clientes_share_3m", 0.0, 1.0),
+        ("top1_prov_share_3m", 0.0, 1.0),
+        ("edad_media_stock_prov_dias", 0.0, float(cfg.CAP_DIAS_IMPAGO)),
+        ("refund_rate", 0.0, cfg.CAP_REFUND_RATE),
+        ("refund_rate_3m", 0.0, cfg.CAP_REFUND_RATE),
+        ("debt_service", 0.0, cfg.CAP_DEBT_SERVICE),
+        ("debt_service_3m", 0.0, cfg.CAP_DEBT_SERVICE),
+        ("stock_prov_sobre_ingresos", 0.0, cfg.CAP_STOCK_SOBRE_INGRESOS),
+        ("stock_clientes_sobre_ingresos", 0.0, cfg.CAP_STOCK_SOBRE_INGRESOS),
+        ("colchon_flujo_meses", -cfg.CAP_COLCHON_MESES, cfg.CAP_COLCHON_MESES),
+        ("ingresos_momentum_3m", -1.0, cfg.CAP_MOMENTUM),
+        ("gastos_momentum_3m", -1.0, cfg.CAP_MOMENTUM),
+        ("runway_meses", -12.0, cfg.CAP_RUNWAY_MESES),
+        ("flujo_relativo", -cfg.CAP_FLUJO_RELATIVO, cfg.CAP_FLUJO_RELATIVO),
+        # La pendiente robusta y la volatilidad viven en la misma escala que
+        # flujo_relativo, así que su tope se deduce del de la serie base. Si esto
+        # falla, el tope de flujo_relativo dejó de aplicarse.
+        ("flujo_pendiente_robusta_6m", -cfg.CAP_FLUJO_RELATIVO, cfg.CAP_FLUJO_RELATIVO),
+        ("flujo_volatilidad_6m", 0.0, 2 * cfg.CAP_FLUJO_RELATIVO),
+    ]
+    acotadas += [(c, -cfg.Z_CLIP, cfg.Z_CLIP)
+                 for c in df.columns if c.startswith("z_")]
+    acotadas += [(c, 0.0, 1.0) for c in df.columns if c.startswith("pctl_")]
+
+    fuera = []
+    for c, lo, hi in acotadas:
+        if c not in df.columns:
+            continue
+        bad = df[c].notna() & ((df[c] < lo - 1e-6) | (df[c] > hi + 1e-6))
+        if bad.any():
+            fuera.append(f"{c} ({int(bad.sum())} filas)")
+    if fuera:
+        fail(f"Métricas fuera de su rango declarado: {fuera}")
+    else:
+        ok(f"{len(acotadas)} métricas acotadas dentro de su rango")
+
+    for suf in ("clientes", "prov"):
+        tot, ant = f"stock_overdue_{suf}", f"stock_{suf}_antiguo"
+        if tot in df.columns and ant in df.columns:
+            bad = df[ant].gt(df[tot] + 1e-4)
+            if bad.any():
+                fail(f"{ant} > {tot} en {int(bad.sum())} filas")
+            else:
+                ok(f"Stock antiguo {suf} <= stock total")
 
     # -------------------------------------------------------------------------
     # Snapshot financiero: jamás backfilled
