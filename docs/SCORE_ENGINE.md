@@ -709,6 +709,28 @@ primero, y solo se hace si bate a la regla: hoy la regla de tres criterios separ
 
 ## 13. Registro de cambios
 
+### Iteración 9 · Score alternativo del equipo (no se adopta)
+
+Se revisó el pipeline experimental (`build_panel` / `calibrate_anchors` /
+`build_score`, 12 métricas y 5 pilares). Es un experimento paralelo, no un
+motor más coherente. El score de esta rama **no cambia**.
+
+Medido sobre los CSV del reto:
+
+- Emparejar `+` y `−` el mismo día marca interno el 6,2% de las filas; el
+  4,2% no es `transfer` y concentra `collection` y `payment`. No se adopta.
+- `status == paid` vs `pending_amount ≤ 0,01`: acuerdo 86,2%. 123.698
+  facturas ya liquidadas no están `paid`. El vencido sigue yendo por
+  pendiente, no por etiqueta.
+- Su tendencia (momento del score, corte ±3) es el error que
+  `etiqueta_tendencia` evita a propósito. COMP_0691 sería el contraejemplo.
+
+Tampoco se adopta: caja reconstruida hacia una REF, OLS de cobros, DSO como
+eje, techos duros 45–55, `fee` como pilar de deuda, ni sustituir las tablas
+económicas por anclajes p10–p90. La cobertura ineludible (nómina / impuesto /
+SS) es una buena pregunta y se deja fuera mientras el 25% de transacciones
+no tenga categoría.
+
 ### Iteración 8 · Versión final: lo mejor de los dos enfoques
 
 Se auditaron las 112 columnas que quedaban. 32 no las nombraba nadie fuera de
@@ -732,6 +754,11 @@ backfilled, runway al 24%, `zero_months` como eje, ni el gap `score_fast − sco
 
 Población vigente: 229 SALUDABLE / 538 ESTABLE / 315 EN RIESGO / 132 FRÁGIL /
 66 CRÍTICO / 6 NO EVALUABLE. Bache +4,69 vs caída estructural −1,66 a 6 meses.
+
+El agente de la pyme (`src/agente_pyme.py`) no es un LLM suelto. Corre
+herramientas: ficha cerrada, RAG sobre `docs/TEORIA_PYME.md` y un catálogo
+(empresa / Embat / partner). El impacto es el eje de hoy, no un score futuro.
+Una línea de partner solo encaja en bache. Se lanza desde la ficha.
 
 ### Iteración 7 · Poda de residuo antes de producto
 

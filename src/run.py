@@ -27,7 +27,7 @@ def main():
             if code:
                 print(f"\nFALLO en {paso} (exit {code}). Se detiene el pipeline.")
                 sys.exit(code)
-    print("\nPipeline completo. Abre dashboard/index.html")
+    print("\nPipeline completo. Interfaz: python -m src.brief_server → http://127.0.0.1:8765/")
 
 
 if __name__ == "__main__":

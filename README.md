@@ -73,6 +73,15 @@ python -m src.run
 Un solo comando: features → validador → score → anticipación → monitor → dashboard.
 Si lanzas un paso suelto: `python -m src.validate_features` (el flag es `-m`, no `3-m`).
 
+La interfaz (plan de acciones, agente, vista fondo) se abre así:
+
+```bash
+python -m src.brief_server
+```
+
+http://127.0.0.1:8765/ — **Plan de acciones** corre ficha + RAG + catálogo sin
+red. **Agente + LLM** redacta encima (key en la cabecera). No hay batch.
+
 `evaluate_anticipation` va **después** del motor: mira al futuro de cada mes.
 Si viviera dentro, el archivo del score dejaría de ser causal.
 
@@ -153,3 +162,29 @@ Sale en cada corrida a propósito. Tras el tope de burn:
 No recongelar `pctl_reference.json` (sale de features, no del score). El prior
 **sí** se recalibró al corregir `bool(nan)` en `caja_negativa_flag`: 51,04 era la
 mediana de scores con un −4 fantasma en el 91% de las filas. Ahora 54,41.
+
+---
+
+## Por qué no da lo mismo que el score alternativo (mateo_dev)
+
+Un compañero propone otro health score (12 métricas, 5 pilares, anclajes
+percentiles sobre un subconjunto “oro”, techos, tendencia = delta del score).
+Se auditó contra el motor y contra los CSV. **No se sustituye el score.**
+Detalle en `docs/SCORE_ENGINE.md` §13 iteración 9.
+
+| Ellos | Nosotros | Por qué no se copia |
+|---|---|---|
+| Ingreso/gasto por signo + pares ± el mismo día = interno | Caja operativa; interno = `transfer` | El 4,2% de esos pares son `collection`/`payment` reales (cobrar y pagar 1.000 el mismo día) |
+| Caja diaria reconstruida hasta una fecha REF | Snapshot solo el mes de la foto | Look-ahead. Ya se rechazó en la iteración 8 |
+| Nota 0–100 = percentil del oro | Umbral económico (burn 1,0, flujo +15%) | El cliente oye “gastáis 0,50×”, no “p90 del oro” |
+| Tendencia = media 3m − media 3m previa del *score* | Media 3m del eje trayectoria | Un dato nuevo mueve el compuesto; no es dirección. COMP_0691: +1,8 pts y flujo −35 pp/mes |
+| Cobro = `status == paid` | `pending_amount` ≈ 0 | 123.698 facturas liquidadas tienen otro status; 192.554 overdue traen `payment_date` |
+| Techo duro 45 si caja en rojo / sin ingresos | Moduladores acotados | Un techo aplasta el 82→68, que es el producto |
+| OLS a 6 meses y DSO como métrica | Theil-Sen; DSO podado | Un mes extremo invierte el OLS; DSO se solapa con stock |
+
+Lo que sí es buena idea y ya cubrimos de otra forma: ratios escala-libre,
+calibrar sin meses basura (peso cubierto + mes activo), avisar si la caja
+está en rojo (`caja_negativa_flag`), servicio de deuda todos los meses
+(modulador, 718 empresas). La cobertura de gasto ineludible (nómina / SS)
+se deja fuera: el 25% de transacciones no tiene categoría y el ratio
+mentiría.
