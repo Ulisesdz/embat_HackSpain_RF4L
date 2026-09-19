@@ -46,7 +46,7 @@ def _theil_sen(x, y):
 
 
 def _walkforward_fc(months, values, min_train=6, horizon=3, max_win=12):
-    """Proyección del score suavizado con banda calibrada walk-forward.
+    """Proyección del score mensual con banda calibrada walk-forward.
 
     En cada origen t se entrena con los últimos `max_win` meses (se empieza
     en 6 y se amplia hasta 12; después la ventana se desliza). Así un régimen
@@ -157,20 +157,18 @@ def payload():
     men["year_month"] = men["year_month"].astype(str)
     dir_map = {}
     for cid, h in men.groupby("company_id"):
-        su = h["score_suavizado"] if "score_suavizado" in h else h["score_mensual"]
-        suv = su.dropna()
+        svals = [_num(v) for v in h["score_mensual"]]
+        scored = [v for v in svals if v is not None]
         d6 = None
-        if len(suv) >= 2:
-            k = min(6, len(suv))
-            d6 = _num(float(suv.iloc[-1] - suv.iloc[-k]))
+        if len(scored) >= 2:
+            k = min(6, len(scored))
+            d6 = _num(float(scored[-1] - scored[-k]))
         dir_map[cid] = d6
-        uvals = [_num(v) for v in su]
         series[cid] = {
             "m": h["year_month"].tolist(),
-            "s": [_num(v) for v in h["score_mensual"]],
-            "u": uvals,
+            "s": svals,
             "g": [int(v) if pd.notna(v) else 0 for v in h["senal_giro"]],
-            "fc": _walkforward_fc(h["year_month"].tolist(), uvals),
+            "fc": _walkforward_fc(h["year_month"].tolist(), svals),
         }
     for c in companies:
         c["dir"] = dir_map.get(c["id"])
@@ -340,7 +338,7 @@ th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left}
 th{color:var(--muted);font-size:11px;text-transform:uppercase}
 tr.click{cursor:pointer} tr.click:hover td{background:#1c2a42}
 .note{color:var(--muted);font-size:13px}
-.ch{width:100%;height:240px;display:block}
+.ch{width:100%;height:260px;display:block}
 svg circle[data-id]{cursor:pointer}
 .hidden{display:none}
 .toolbar{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap}
@@ -379,44 +377,60 @@ document.getElementById('nav').onclick = e => { if(e.target.dataset.tab) show(e.
 
 function chart(id){
   const ser=D.series[id]; if(!ser) return '';
-  const w=720,h=220,p=28;
+  const w=720,h=240,pl=48,pr=18,pt=18,pb=32;
   const fc=ser.fc;
-  const pts=ser.s.map((v,i)=>({x:i,y:v,u:(ser.u||[])[i],g:ser.g[i],m:ser.m[i]})).filter(d=>d.y!=null);
+  const pts=ser.s.map((v,i)=>({x:i,y:v,g:ser.g[i],m:ser.m[i]})).filter(d=>d.y!=null);
   if(!pts.length) return '<p class="note">Sin meses puntuados.</p>';
   const xs=pts.map(d=>d.x), ys=pts.map(d=>d.y);
   const xmin=Math.min(...xs), xmax=Math.max(...xs)+(fc?3:0);
   const extra=fc?[...fc.y,...fc.lo,...fc.hi]:[];
-  const ymin=Math.min(0,...ys,...extra), ymax=Math.max(100,...ys,...extra);
-  const X=x=>p+(x-xmin)/(xmax-xmin||1)*(w-2*p);
-  const Y=y=>h-p-(y-ymin)/(ymax-ymin||1)*(h-2*p);
+  let ymin=Math.min(...ys,...extra), ymax=Math.max(...ys,...extra);
+  ymin=Math.max(0, Math.floor((ymin-8)/10)*10);
+  ymax=Math.min(100, Math.ceil((ymax+8)/10)*10);
+  if(ymax-ymin<20){ ymin=Math.max(0,ymin-10); ymax=Math.min(100,ymax+10); }
+  const X=x=>pl+(x-xmin)/(xmax-xmin||1)*(w-pl-pr);
+  const Y=y=>h-pb-(y-ymin)/(ymax-ymin||1)*(h-pt-pb);
   const d=pts.map((pt,i)=>(i?'L':'M')+X(pt.x)+','+Y(pt.y)).join(' ');
-  const su=pts.filter(pt=>pt.u!=null);
-  const du=su.map((pt,i)=>(i?'L':'M')+X(pt.x)+','+Y(pt.u)).join(' ');
+  const yTicks=[];
+  for(let v=ymin; v<=ymax; v+=10) yTicks.push(v);
+  if(ymin<55 && ymax>55 && !yTicks.includes(55)) yTicks.push(55);
+  yTicks.sort((a,b)=>a-b);
+  const grid=yTicks.map(v=>`<line x1="${pl}" x2="${w-pr}" y1="${Y(v)}" y2="${Y(v)}" stroke="${v===55?'#3d4f6a':'#243044'}" stroke-dasharray="${v===55?'4 4':'none'}"/>
+    <text x="${pl-6}" y="${Y(v)+4}" fill="#8b9bb4" font-size="10" text-anchor="end">${v}</text>`).join('');
   let ray='';
-  if(fc && su.length){
-    const last=su[su.length-1];
+  if(fc && pts.length){
+    const last=pts[pts.length-1];
     const xs2=[last.x, last.x+1, last.x+2, last.x+3];
-    const ys2=[last.u, ...fc.y];
-    const los=[last.u, ...fc.lo];
-    const his=[last.u, ...fc.hi];
+    const ys2=[last.y, ...fc.y];
+    const los=[last.y, ...fc.lo];
+    const his=[last.y, ...fc.hi];
     const band=xs2.map((x,i)=>X(x)+','+Y(his[i])).join(' ')+' '+[...xs2].reverse().map((x,i)=>X(x)+','+Y(los[los.length-1-i])).join(' ');
     const col=fc.b>0.15?'#3dd68c':fc.b<-0.15?'#ef5a5a':'#8b9bb4';
     const mid=ys2.map((y,i)=>(i?'L':'M')+X(xs2[i])+','+Y(y)).join(' ');
     ray=`<polygon points="${band}" fill="${col}" fill-opacity=".12" stroke="none"/>
       <path d="${mid}" fill="none" stroke="${col}" stroke-width="2" stroke-dasharray="6 4"/>
-      <text x="${X(xs2[xs2.length-1])-4}" y="${Y(ys2[ys2.length-1])-8}" fill="${col}" font-size="10" text-anchor="end">+3m</text>`;
+      <text x="${X(xs2[xs2.length-1])-2}" y="${Y(ys2[ys2.length-1])-8}" fill="${col}" font-size="10" text-anchor="end">+3m</text>`;
   }
-  const dots=pts.filter(pt=>pt.g).map(pt=>`<circle cx="${X(pt.x)}" cy="${Y(pt.y)}" r="4.5" fill="#ef5a5a"><title>${pt.m} giro</title></circle>`).join('');
+  const giros=pts.filter(pt=>pt.g);
+  let mark=null;
+  if(giros.length){
+    mark=giros[0];
+    for(let i=1;i<giros.length;i++){
+      if(giros[i].x-giros[i-1].x>2) mark=giros[i];
+    }
+  }
+  const dots=mark?`<circle cx="${X(mark.x)}" cy="${Y(mark.y)}" r="5" fill="#ef5a5a"/>
+    <text x="${X(mark.x)+8}" y="${Y(mark.y)-8}" fill="#ef5a5a" font-size="10">giro</text>`:'';
   const ticks=pts.filter((_,i)=>i===0||i===pts.length-1||i===Math.floor(pts.length/2))
-    .map(pt=>`<text x="${X(pt.x)}" y="${h-6}" fill="#8b9bb4" font-size="10">${pt.m}</text>`).join('');
+    .map(pt=>`<text x="${X(pt.x)}" y="${h-10}" fill="#8b9bb4" font-size="10">${pt.m}</text>`).join('');
   const cap=fc
-    ? `Azul = score mensual. Claro = suavizado. Discontinuo + sombra = proyección walk-forward a 3 meses (Theil-Sen; banda = p80 del error pasado). MAE ${fc.mae??'—'} pts en ${fc.n} tests. No es predicción de quiebra.`
-    : 'Azul = score mensual. Claro = suavizado. Sin proyección: menos de 6 meses puntuados.';
+    ? `Línea azul = score mensual. El punto rojo es el giro vigente: el primer mes del último episodio en que el comportamiento se torció frente a su propia historia. No es cualquier salto (un mes de caja loco no cuenta). Discontinuo = proyección a 3 meses desde el último score real. MAE ${fc.mae??'—'} pts.`
+    : 'Línea azul = score mensual. Punto rojo = primer giro. Sin proyección: menos de 6 meses puntuados.';
   return `<svg class="ch" viewBox="0 0 ${w} ${h}">
-    <line x1="${p}" x2="${w-p}" y1="${Y(55)}" y2="${Y(55)}" stroke="#33415c" stroke-dasharray="4 4"/>
-    <text x="${w-p}" y="${Y(55)-5}" fill="#8b9bb4" font-size="10" text-anchor="end">55 · aún parece sana</text>
+    ${grid}
+    <text x="12" y="${pt+8}" fill="#8b9bb4" font-size="10">Score</text>
+    ${(ymin<55 && ymax>55)?`<text x="${w-pr}" y="${Y(55)-5}" fill="#8b9bb4" font-size="10" text-anchor="end">55 · aún parece sana</text>`:''}
     <path d="${d}" fill="none" stroke="#5cb3ff" stroke-width="2.2"/>
-    ${du?`<path d="${du}" fill="none" stroke="#9ecbff" stroke-width="1.3" opacity=".7"/>`:''}
     ${ray}${dots}${ticks}
   </svg>
   <p class="note">${cap}</p>`;
