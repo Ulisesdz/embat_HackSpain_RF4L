@@ -64,7 +64,7 @@ sentido económico.
 | Antigüedad del impago | −15 pts | Deuda envejecida es impago, no retraso de gestión |
 | Runway real | ±12 pts | Solo en el mes con foto de caja, y por percentil |
 | Concentración de contraparte | −10 pts | **Solo si el eje ya está por debajo de 60.** Penalizar a una empresa sana por tener pocos proveedores sería castigar su modelo de negocio |
-| Apalancamiento | ±8 pts | Solo en el mes con foto de deuda |
+| Apalancamiento + caja negativa | ±8 pts (caja −4) | `debt_service` todos los meses; foto de deuda y `caja_negativa_flag==1` solo con snapshot. NaN no penaliza |
 
 ### 2.3 Cómo se combinan los meses
 
@@ -74,7 +74,7 @@ que **un mes antiguo con datos completos pesa más que uno reciente con datos
 dudosos**.
 
 Encima va una corrección importante para producto: si una empresa tiene poca
-evidencia, su score se acerca al comportamiento típico (51,04) en lugar de afirmar un
+evidencia, su score se acerca al comportamiento típico (54,41) en lugar de afirmar un
 extremo. Sin esto, una empresa con **un solo mes** de datos salía con 95,0 y
 encabezaba el ranking. Ahora ese caso cae a ~60 solo, sin filtros manuales.
 
@@ -106,11 +106,11 @@ encabezaba el ranking. Ahora ese caso cae a ~60 solo, sin filtros manuales.
 
 | Clase | Umbral | Empresas |
 |---|---|---|
-| SALUDABLE | ≥ 68 | 139 |
-| ESTABLE | 52 – 68 | 510 |
-| EN RIESGO | 42 – 52 | 349 |
-| FRÁGIL | 33 – 42 | 191 |
-| CRÍTICO | < 33 | 91 |
+| SALUDABLE | ≥ 68 | 229 |
+| ESTABLE | 52 – 68 | 538 |
+| EN RIESGO | 42 – 52 | 315 |
+| FRÁGIL | 33 – 42 | 132 |
+| CRÍTICO | < 33 | 66 |
 | NO EVALUABLE | sin evidencia suficiente | 6 |
 
 Los umbrales son **absolutos a propósito**. Un percentil calculado sobre el conjunto
@@ -118,9 +118,9 @@ que toque evaluar clasificaría distinto a la misma empresa según con quién la
 comparen, y eso es indefendible ante un cliente.
 
 Que nadie saque 0 ni 100 es correcto: el score agrega 25 meses, así que los extremos
-exigen consistencia y no un mes excepcional. Distribución real: media **52,1**,
-mediana **52,2**, recorrido 13,45–84,18 (el suelo bajó al filtrar transferencias
-que inflaban ingresos).
+exigen consistencia y no un mes excepcional. Distribución real: media **55,4**,
+mediana **55,5**, recorrido 16,22–87,81 (el −4 fantasma de `bool(nan)` en caja
+negativa ya no aplasta a quien no tiene foto de saldo).
 
 ### 3.3 Los campos que dan producto, no solo score
 
@@ -141,17 +141,17 @@ Estos son los que permiten construir algo que alguien firme:
 
 | Pregunta | Campo | Resultado |
 |---|---|---|
-| Quién está sano | `clasificacion` | 139 SALUDABLE, 510 ESTABLE, 349 EN RIESGO, 191 FRÁGIL, 91 CRÍTICO, 6 NO EVALUABLE |
+| Quién está sano | `clasificacion` | 229 SALUDABLE, 538 ESTABLE, 315 EN RIESGO, 132 FRÁGIL, 66 CRÍTICO, 6 NO EVALUABLE |
 | Quién está mejorando | `tendencia` | 262 MEJORANDO (y 398 DETERIORANDO) |
-| Quién empieza a torcerse | `giro_detectado` + `score_final` ≥ 55 | **337 llamadas ahora** (351 tuvieron el giro aún sanas; 14 ya cayeron) |
-| Bache o caída | `naturaleza_caida` | Bache: +4,81 pts a 6 meses (53% recupera). Caída estructural: −1,76 (34% sigue) |
+| Quién empieza a torcerse | `giro_detectado` + `score_final` ≥ 55 | **420 llamadas ahora** (417 tuvieron el giro aún sanas ese mes) |
+| Bache o caída | `naturaleza_caida` | Bache: +4,69 pts a 6 meses (52% recupera). Caída estructural: −1,66 (33% sigue) |
 | Por qué ha cambiado | `motivo_cambio`, `aporte_*` | 17.744 filas-mes; 5,5% lo mueve un dato nuevo |
 | Cuándo se vio venir | `meses_anticipacion` | **+2 meses** vs nivel en asfixia; +1 en impago |
 
-**Tres recuentos que no se mezclan en una demo.** `alerta_temprana` = 1.122
-(nivel o cola: recall, no prioridad). `giro_detectado` = 550 (se torció contra
-sí misma). Lista de llamadas = **337** (giro y **sigue** ≥ 55). El giro no se
-vende como predictor de asfixia (lift 0,78): se vende como el caso «82→68».
+**Tres recuentos que no se mezclan en una demo.** `alerta_temprana` = 1.111
+(nivel o cola: recall, no prioridad). `giro_detectado` = 624 (se torció contra
+sí misma). Lista de llamadas = **420** (giro y **sigue** ≥ 55). El giro no se
+vende como predictor de asfixia (lift 0,90): se vende como el caso «82→68».
 
 **La tercera merece contexto porque es la que el enunciado plantea de forma más
 explícita** ("de 82 a 68 sigue pareciendo sana"). La primera versión del sistema la
@@ -175,7 +175,7 @@ Los datos, por si surge la pregunta comercial:
 |---|---|---|
 | Grupos | 249 | Vista, no segundo cálculo |
 | Grupos con tendencias opuestas dentro | 85 (34,1%) | Una media las cancelaría |
-| Grupos donde el agregado **esconde** una empresa en riesgo | **79 (31,7%)** | En 1 de cada 3 grupos, agregar borra la señal que el cliente paga por ver |
+| Grupos donde el agregado **esconde** una empresa en riesgo | **74 (29,7%)** | En 1 de cada 3 grupos, agregar borra la señal que el cliente paga por ver |
 | Dispersión interna (mediana) | 5,4 pts | El holding «parece» estable y una filial no |
 
 **Sobre el toggle empresa/grupo en producto: sí, pero como toggle de vista, no de
@@ -249,7 +249,7 @@ El motor está terminado, medido y explicable. Lo que aún no existe es la capa 
 alguien paga. La señal con más valor comercial y que nadie más tiene es esta
 combinación:
 
-> **337 empresas que se están torciendo mientras siguen puntuando por encima de 55**,
+> **420 empresas que se están torciendo mientras siguen puntuando por encima de 55**,
 > separadas entre las que históricamente rebotan (`bache`) y las que no
 > (`caida_estructural`), cada una con el motivo del cambio y los meses de antelación.
 
@@ -322,7 +322,7 @@ Tres cosas suyas **sí** mejoraban el dato y están dentro:
 
 | Idea suya | Cómo la integramos | Por qué gana |
 |---|---|---|
-| Flujos solo operativos (sin transfer / inversión / deuda) | `caja_ingresos` / `caja_gastos` salen de cuentas de tesorería y categorías operativas | 152 k transferencias y 31 k pagos de deuda inflaban ingresos. Tras el filtro el prior congelado es **51,04** |
+| Flujos solo operativos (sin transfer / inversión / deuda) | `caja_ingresos` / `caja_gastos` salen de cuentas de tesorería y categorías operativas | 152 k transferencias y 31 k pagos de deuda inflaban ingresos. El prior vigente (tras corregir también `bool(nan)` de caja) es **54,41** |
 | `debt_service` de categorías bancarias | Modulador mensual (718 empresas, 68% de filas) | Su `leverage` era una foto de septiembre. El nuestro también; el servicio de deuda existe todos los meses |
 | `refund_rate` (recibos devueltos) | Modulador del eje de cobro (427 empresas, 64% de filas) | Señal de pago que no está en las facturas y no es look-ahead |
 
@@ -361,7 +361,7 @@ con el dato que ya tenemos.
 **Una lista de llamadas priorizada**, no un dashboard genérico. La señal que nadie
 más tiene es esta:
 
-> 337 empresas que se están torciendo **mientras siguen pareciendo sanas**
+> 420 empresas que se están torciendo **mientras siguen pareciendo sanas**
 > (`score_final ≥ 55` + `giro_detectado`), separadas en `bache` vs `caida_estructural`,
 > cada una con el motivo del cambio y los meses de antelación.
 

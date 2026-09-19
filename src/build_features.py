@@ -1251,6 +1251,7 @@ def normalizar(panel, companies):
     # caja_real y caja_negativa_flag NO se rellenan a 0: la ausencia de un
     # balance reportado es "sin visibilidad", no "cero en caja". Confundirlas
     # hundía el runway de las empresas sin cuenta corriente detectada.
+    # El motor DEBE comparar el flag con == 1. bool(nan) es True en Python.
     if "caja_real" not in panel.columns:
         panel["caja_real"] = np.nan
     panel["caja_reportada"] = panel.get("caja_reportada", 0)

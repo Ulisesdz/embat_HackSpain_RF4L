@@ -50,6 +50,16 @@ def val(row, col):
         return v
 
 
+def flag(row, col):
+    """True solo si el flag vale 1. NaN, 0 y ausencia son inactivos.
+
+    No usar bool(valor): bool(float('nan')) es True en Python, y este panel
+    deja flags en NaN cuando no hay foto. 'Sin visibilidad' no es 'saldo
+    negativo' ni 'mes sin ingresos'.
+    """
+    return val(row, col) == 1
+
+
 def escalonado(v, tabla, por_debajo=False):
     """Primer tramo que cumple el umbral. tabla = [(umbral, score, texto)]."""
     for umbral, score, txt in tabla:
@@ -253,7 +263,7 @@ def f_cobro_clientes(row):
 
 def f_eficiencia(row):
     """Velocidad de quema: cuánto gasta por cada euro que ingresa."""
-    if bool(row.get("mes_sin_ingresos", 0)):
+    if flag(row, "mes_sin_ingresos"):
         return 5, "Mes sin ingresos y con gastos: quema pura de caja", "mes_sin_ingresos"
 
     v, fuente = val(row, "burn_rate_3m_avg"), "burn_rate_3m_avg"
@@ -311,12 +321,12 @@ def f_trayectoria(row):
         return None, "Historia insuficiente para medir trayectoria", None
 
     pen = 0.0
-    for flag, peso, txt in [
+    for nombre, peso, txt in [
         ("persistente_flag_flujo_negativo", 0.5, "3 meses de flujo negativo"),
         ("persistente_flag_stock_prov_antiguo", 0.5, "impago envejecido persistente"),
         ("persistente_flag_tijera", 0.4, "ingresos cayendo y gastos subiendo"),
     ]:
-        if row.get(flag, 0) == 1:
+        if flag(row, nombre):
             pen -= peso
             razones.append(txt)
     comp["persistencia"] = float(np.clip(pen, -1, 0))
@@ -357,21 +367,27 @@ def modular_concentracion(row, score, suf):
 
 
 def modular_apalancamiento(row, score):
-    """Deuda financiera: corrección acotada, no eje con peso fijo.
+    """Deuda financiera y saldo negativo: corrección acotada, no eje.
 
-    El servicio de deuda sale de las categorías `debt_repayment` e
-    `interest_charge` y existe todos los meses (718 empresas). El snapshot de
-    `deuda_sobre_ingresos` solo cubre el último mes: se usa como refuerzo, no
-    como fuente única, y nunca se propaga al pasado.
+    El servicio de deuda sale de `debt_repayment` e `interest_charge` y
+    existe todos los meses (718 empresas). El snapshot de
+    `deuda_sobre_ingresos` solo cubre el último mes: refuerzo, no fuente
+    única, y nunca se propaga al pasado.
+
+    `caja_negativa_flag` es independiente de la deuda. Vale 1 solo con foto
+    de caja y saldo < 0; NaN = sin visibilidad. Se aplica aunque no haya
+    snapshot de deuda, y no se aplica si el flag no es 1.
     """
     ds = val(row, "debt_service_3m")
     if ds is None:
         ds = val(row, "debt_service")
     d = val(row, "deuda_sobre_ingresos")
-    if ds is None and d is None:
+    caja_neg = flag(row, "caja_negativa_flag")
+    if ds is None and d is None and not caja_neg:
         return score, None
 
     m = cfg.MOD_APALANCAMIENTO_PUNTOS
+    ajuste, txt = 0.0, None
     if ds is not None:
         if ds == 0:
             if d is None or d == 0:
@@ -388,7 +404,7 @@ def modular_apalancamiento(row, score):
             ajuste, txt = -m * 0.6, f"Servicio de deuda alto ({ds*100:.1f}% de ingresos)"
         else:
             ajuste, txt = -m, f"Servicio de deuda muy alto ({ds*100:.1f}% de ingresos)"
-    else:
+    elif d is not None:
         if d == 0:
             ajuste, txt = m * 0.3, "Sin deuda bancaria viva"
         elif d < 0.25:
@@ -400,9 +416,10 @@ def modular_apalancamiento(row, score):
         else:
             ajuste, txt = -m, f"Deuda muy alta ({d:.2f}x ingresos anuales)"
 
-    if bool(row.get("caja_negativa_flag", 0)):
+    if caja_neg:
         ajuste -= m * 0.5
-        txt += "; saldo bancario en negativo"
+        extra = "saldo bancario en negativo"
+        txt = f"{txt}; {extra}" if txt else extra
     return float(np.clip(score + ajuste, 0, 100)), f"{txt} ({ajuste:+.1f} pts)"
 
 
@@ -910,6 +927,61 @@ def vista_grupo(scores, panel):
     return v.sort_values("score_grupo")
 
 
+def _razon_apal(detalle):
+    if not isinstance(detalle, dict):
+        return ""
+    return (detalle.get("_apalancamiento") or {}).get("razon") or ""
+
+
+def _comprobar_flag_nan():
+    """El contrato que bool(nan) rompía: sin foto no hay penalización."""
+    nan_row = pd.Series({"debt_service_3m": 0.0, "caja_negativa_flag": np.nan})
+    _, txt = modular_apalancamiento(nan_row, 60.0)
+    if "saldo bancario en negativo" in (txt or ""):
+        raise RuntimeError("NaN en caja_negativa_flag no puede penalizar")
+    cero = nan_row.copy()
+    cero["caja_negativa_flag"] = 0
+    _, txt = modular_apalancamiento(cero, 60.0)
+    if "saldo bancario en negativo" in (txt or ""):
+        raise RuntimeError("caja_negativa_flag=0 no puede penalizar")
+    uno = nan_row.copy()
+    uno["caja_negativa_flag"] = 1
+    sc, txt = modular_apalancamiento(uno, 60.0)
+    if "saldo bancario en negativo" not in (txt or ""):
+        raise RuntimeError("caja_negativa_flag=1 debe penalizar")
+    esperado = 60.0 + cfg.MOD_APALANCAMIENTO_PUNTOS * (0.3 - 0.5)
+    if abs(sc - esperado) > 0.05:
+        raise RuntimeError(f"penalización neta distinta de {esperado}: {sc}")
+    solo = pd.Series({"caja_negativa_flag": 1})
+    sc, txt = modular_apalancamiento(solo, 60.0)
+    if "saldo bancario en negativo" not in (txt or ""):
+        raise RuntimeError("caja negativa debe aplicar sin snapshot de deuda")
+    if abs(sc - 56.0) > 0.05:
+        raise RuntimeError(f"solo caja negativa debía dejar 56, no {sc}")
+    vacio = pd.Series({"caja_negativa_flag": np.nan})
+    sc, txt = modular_apalancamiento(vacio, 60.0)
+    if txt is not None or sc != 60.0:
+        raise RuntimeError("sin deuda y sin foto de caja el modulador no toca el score")
+
+
+def _comprobar_caja_negativa_en_panel(panel):
+    scored = panel["score_mensual"].notna()
+    marcada = panel["detalle"].map(
+        lambda d: "saldo bancario en negativo" in _razon_apal(d))
+    n_flag = int((scored & (panel["caja_negativa_flag"] == 1)).sum())
+    n_txt = int((scored & marcada).sum())
+    n_nan = int((scored & panel["caja_negativa_flag"].isna() & marcada).sum())
+    if n_nan:
+        raise RuntimeError(
+            f"{n_nan} filas sin foto de caja marcadas 'saldo bancario en negativo' "
+            "(bool(nan) u otro falso positivo)")
+    if n_txt != n_flag:
+        raise RuntimeError(
+            f"caja_negativa_flag=1 en {n_flag} filas puntuadas, "
+            f"pero el modulador lo escribió en {n_txt}")
+    print(f"  caja negativa: {n_flag} filas penalizadas (el resto de NaN no cuenta)")
+
+
 def run():
     cfg.asegurar_dirs()
     panel = pd.read_csv(cfg.PANEL_PATH)
@@ -921,7 +993,9 @@ def run():
         print(f"Excluidas {n:,} filas de meses parciales (flujos truncados).")
 
     print("Calculando score mensual...")
+    _comprobar_flag_nan()
     panel = panel.join(panel.apply(score_mes, axis=1))
+    _comprobar_caja_negativa_en_panel(panel)
     panel = panel.sort_values(["company_id", "year_month"])
 
     print("Atribuyendo el cambio mes a mes...")

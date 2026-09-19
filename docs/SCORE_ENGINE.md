@@ -157,6 +157,12 @@ meses: con 1,2% de cobertura, un peso fijo del 5% secuestraba el umbral de
 evidencia. Ahora es un **modulador acotado** de ±8 puntos alimentado primero por
 `debt_service` (pagos e intereses, 718 empresas, todos los meses) y, si no hay
 pagos, por la foto de `deuda_sobre_ingresos` solo en el mes del snapshot.
+`caja_negativa_flag` resta 4 puntos **solo** cuando vale 1 (saldo < 0 con foto).
+NaN no es negativo: `bool(float('nan'))` es True, y esa línea llegó a aplicar
+el −4 al 91% de las filas con score. El motor compara `== 1` y aplica la
+penalización aunque no haya snapshot de deuda. Los tests sintéticos y un
+conteo sobre el panel abortan si el texto "saldo bancario en negativo" aparece
+en una fila sin foto.
 
 **Los z-scores salieron del disparo de la alerta.** Medidos, tienen AUC entre 0,44
 y 0,57 y varios apuntan al lado contrario del esperado. Se mantienen como
@@ -267,7 +273,8 @@ score_final = (evidencia × score_bruto + k × prior) / (evidencia + k)
 ```
 
 con `k = 0,75` y `prior` = mediana de las empresas con ≥12 meses evaluados
-(**51,04**, calibrado sobre 798 empresas con ≥12 meses). La `evidencia` es la suma de los pesos
+(**54,41**, calibrado sobre 798 empresas con ≥12 meses tras corregir `bool(nan)`
+en `caja_negativa_flag`). La `evidencia` es la suma de los pesos
 mensuales, con un máximo de ~7,5.
 
 El prior está **congelado en `model/prior_contraccion.json`**, y no es un detalle
@@ -290,15 +297,15 @@ empresas de test esos percentiles serían inestables.
 
 | Clase | Umbral | Población |
 |---|---|---|
-| SALUDABLE | ≥ 68 | 139 |
-| ESTABLE | 52 – 68 | 510 |
-| EN RIESGO | 42 – 52 | 349 |
-| FRÁGIL | 33 – 42 | 191 |
-| CRÍTICO | < 33 | 91 |
+| SALUDABLE | ≥ 68 | 229 |
+| ESTABLE | 52 – 68 | 538 |
+| EN RIESGO | 42 – 52 | 315 |
+| FRÁGIL | 33 – 42 | 132 |
+| CRÍTICO | < 33 | 66 |
 | NO EVALUABLE | sin evidencia | 6 |
 
-Distribución resultante: media 52,1, mediana 52,2, recorrido 13,45 – 84,18
-(tras filtrar transferencias que inflaban ingresos). Que ninguna empresa llegue
+Distribución resultante: media 55,4, mediana 55,5, recorrido 16,22 – 87,81
+(tras quitar el −4 fantasma de `bool(nan)` en caja negativa). Que ninguna empresa llegue
 a 0 ni a 100 es esperado y correcto: el
 score de empresa es una media de 25 meses contraída hacia el prior, así que los
 extremos exigen consistencia, no un mes excepcional.
@@ -421,19 +428,19 @@ menos ruido.
 
 | Pregunta | Dónde se contesta | Estado (corrida vigente) |
 |---|---|---|
-| Quién está sano | `clasificacion` sobre `score_final` | 139 SALUDABLE, 510 ESTABLE, 349 EN RIESGO, 191 FRÁGIL, 91 CRÍTICO, 6 NO EVALUABLE |
+| Quién está sano | `clasificacion` sobre `score_final` | 229 SALUDABLE, 538 ESTABLE, 315 EN RIESGO, 132 FRÁGIL, 66 CRÍTICO, 6 NO EVALUABLE |
 | Quién está mejorando | `tendencia` + `score_trayectoria` | 262 MEJORANDO, 398 DETERIORANDO, 611 ESTABLE |
-| Quién empieza a torcerse | `senal_giro`, `naturaleza_caida` | 550 con giro; **337 llamadas** (score_final ≥ 55 ahora). 351 lo tuvieron aún sanas |
-| Bache o caída | `naturaleza_caida` | Bache +4,81 pts a 6 m (53% recupera); caída −1,76 (34% sigue) |
+| Quién empieza a torcerse | `senal_giro`, `naturaleza_caida` | 624 con giro; **420 llamadas** (score_final ≥ 55 ahora). 417 lo tuvieron aún sanas ese mes |
+| Bache o caída | `naturaleza_caida` | Bache +4,69 pts a 6 m (52% recupera); caída −1,66 (33% sigue) |
 | Por qué ha cambiado | `motivo_cambio`, `aporte_*`, `cambio_real` vs `cambio_cobertura` | 17.744 filas-mes; 5,5% dominado por dato nuevo |
 | Cuándo se vio venir | `primer_giro`, `meses_anticipacion`, `meses_ganados_a_nivel` | Cola vs nivel: +2 m asfixia, +1 m impago |
 
-**Cómo no mezclar recuentos.** `alerta_temprana` (1.122) es nivel **o** cola:
+**Cómo no mezclar recuentos.** `alerta_temprana` (1.111) es nivel **o** cola:
 recall, no la lista de ventas. El giro no se fusiona con esa capa: su lift sobre
-asfixia es 0,78. Lo que afirma es «esta caída se sostiene», y se valida contra
-el score futuro (tabla de bache vs caída). El dashboard pinta 337, no 351: las
-14 de diferencia ya no parecen sanas (`score_final` < 55) y pasan a la capa de
-nivel.
+asfixia es 0,90. Lo que afirma es «esta caída se sostiene», y se valida contra
+el score futuro (tabla de bache vs caída). El dashboard pinta 420, no 417: tres
+empresas entran por `score_final` ≥ 55 con el giro mensual entre 45 y 55
+(`GIRO_NIVEL_MIN`).
 
 ### 9.1 "Quién empieza a torcerse": el giro autorreferenciado
 
@@ -459,9 +466,9 @@ empresa **contra sí misma**, y hacen falta dos cosas:
    nada si oscila 40. El disparo es en sigmas propias, no en puntos.
 
 Resultado: el giro se activa en el **30,4%** de esos casos frente al 2,7% de
-antes, con una base poblacional del 4,9%. Hoy la lista de llamadas son **337**
-empresas con giro y `score_final` ≥ 55. Otras 14 lo tuvieron aún sanas y ya
-bajaron de 55 (351 en el recuento mensual).
+antes, con una base poblacional del 4,9%. Hoy la lista de llamadas son **420**
+empresas con giro y `score_final` ≥ 55. El recuento mensual (giro con
+`score_mensual` ≥ 55) es 417.
 
 ### 9.2 Por qué el giro NO se fusiona con los canales
 
@@ -723,8 +730,8 @@ que introducía look-ahead o un 50 inventado:
 No se adoptó: nota 50 si falta dato, caja reconstruida hacia atrás, leverage
 backfilled, runway al 24%, `zero_months` como eje, ni el gap `score_fast − score`.
 
-Población vigente: 140 SALUDABLE / 512 ESTABLE / 350 EN RIESGO / 182 FRÁGIL /
-97 CRÍTICO / 5 NO EVALUABLE. Bache +4,51 vs caída estructural −4,69 a 6 meses.
+Población vigente: 229 SALUDABLE / 538 ESTABLE / 315 EN RIESGO / 132 FRÁGIL /
+66 CRÍTICO / 6 NO EVALUABLE. Bache +4,69 vs caída estructural −1,66 a 6 meses.
 
 ### Iteración 7 · Poda de residuo antes de producto
 

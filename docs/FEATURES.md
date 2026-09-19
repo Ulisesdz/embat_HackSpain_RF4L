@@ -464,7 +464,7 @@ ficticio en 2024.
 |---|---|---|
 | `caja_real` | 96,1% | Suma de saldos en cuentas de tesorería |
 | `caja_reportada` | 0% | `1` si la empresa tiene saldo visible. Distingue "sin visibilidad" de "cero en caja" |
-| `caja_negativa_flag` | 96,1% | `1` si el saldo agregado es negativo |
+| `caja_negativa_flag` | 96,1% | `1` si el saldo agregado es negativo. `0` si hay foto y el saldo no es negativo. `NaN` si no hay foto. El motor compara `== 1`; `bool(nan)` es True y convertía "sin visibilidad" en penalización |
 | `deuda_viva` | 98,8% | `sum(|outstanding|)` convertido a EUR |
 | `n_deudas` | 98,8% | Productos de deuda convertibles |
 | `deuda_multimoneda`, `deuda_no_eur` | 98,8% | Flags de riesgo de conversión |

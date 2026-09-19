@@ -335,6 +335,14 @@ def main():
     else:
         ok("Semántica caja_reportada/caja_real consistente")
 
+    if "caja_negativa_flag" in df.columns:
+        mal_foto = df["caja_reportada"].eq(1) & df["caja_negativa_flag"].isna()
+        mal_vacio = df["caja_reportada"].eq(0) & df["caja_negativa_flag"].notna()
+        if mal_foto.any() or mal_vacio.any():
+            fail("caja_negativa_flag debe ser 0/1 con foto de caja y NaN sin foto")
+        else:
+            ok("caja_negativa_flag: 0/1 con foto, NaN sin visibilidad")
+
     # -------------------------------------------------------------------------
     # Parcial y evidencia
     # -------------------------------------------------------------------------

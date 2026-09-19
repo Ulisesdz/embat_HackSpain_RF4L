@@ -5,10 +5,10 @@ Este documento recoge la arquitectura completa de la fase de datos: qué hace ca
 El principio rector del proyecto: ninguna transformación se aplica sin dejar constancia numérica de lo que descarta. Un dataset sintético con trampas premia al equipo que documenta y gestiona los sesgos, no al que los esconde para obtener una curva perfecta.
 
 **Cómo explicar los números de la última corrida** (sin mezclar recuentos) está en
-el `README.md` raíz, sección «Cómo se explica cada métrica». Resumen: 1.122 es
-alerta de nivel/cola; 550 es giro alguna vez; **337** es la lista de llamadas
-(giro + score actual ≥ 55). 351 es el mismo giro contado en el mes en que aún
-parecían sanas. Validación: 0 errores. Prior congelado 51,04. Monitor: 3.029
+el `README.md` raíz, sección «Cómo se explica cada métrica». Resumen: 1.111 es
+alerta de nivel/cola; 624 es giro alguna vez; **420** es la lista de llamadas
+(giro + score actual ≥ 55). 417 es el mismo giro contado en el mes en que aún
+parecían sanas. Validación: 0 errores. Prior congelado 54,41. Monitor: 3.050
 avisos (sin el cruce ruidoso por ESTABLE).
 
 ## 1. Arquitectura del Pipeline y Archivos
@@ -83,7 +83,7 @@ El output consolidado para el leaderboard y la tabla principal del frontend: 1.2
 | `cobertura_media`, `confianza`, `evidencia_efectiva`, `apto_ranking` | Cuán robusta es la nota y si la empresa debe aparecer en un ranking |
 
 - scores_grupo.csv
-Vista agregada de los **249** grupos. No publica una media y se calla: publica `score_grupo` junto a `score_peor` / `empresa_peor`, `dispersion_interna`, `tendencias_opuestas` y el flag `agregado_esconde_problema`, que salta en **79 de 249** (31,7%). El razonamiento empresa vs. grupo está en `SCORE_ENGINE.md` §10.
+Vista agregada de los **249** grupos. No publica una media y se calla: publica `score_grupo` junto a `score_peor` / `empresa_peor`, `dispersion_interna`, `tendencias_opuestas` y el flag `agregado_esconde_problema`, que salta en **74 de 249** (29,7%). El razonamiento empresa vs. grupo está en `SCORE_ENGINE.md` §10.
 
 - score_explanations.json
 El puente hacia el producto final (Frontend/Agente LLM). Un diccionario por empresa que contiene el "por qué" exacto de su puntuación en el último mes evaluable, factor por factor (ej. "Runway crítico (1.2 meses de gasto cubiertos)"), junto con alertas pre-calculadas para el CFO.

@@ -48,10 +48,11 @@ def _theil_sen(x, y):
 def _walkforward_fc(months, values, min_train=6, horizon=3, max_win=12):
     """Proyección del score mensual con banda calibrada walk-forward.
 
-    En cada origen t se entrena con los últimos `max_win` meses (se empieza
-    en 6 y se amplia hasta 12; después la ventana se desliza). Así un régimen
-    antiguo no manda después de un giro. Se predice t+1, se guarda el error,
-    se avanza. La banda es el p80 de esos errores, más ancha a 3 meses.
+    En cada origen t se estima la pendiente Theil-Sen con los últimos
+    `max_win` meses (se empieza en 6 y se amplia hasta 12; después la
+    ventana se desliza). La proyección no vuelve a la recta: parte del
+    último score real y avanza `pendiente × meses`. La banda es el p80
+    de ese mismo error walk-forward, más ancha a 3 meses.
     No predice quiebra: predice el propio score. Dos meses no bastan.
     """
     xs, ys, ms = [], [], []
@@ -73,20 +74,20 @@ def _walkforward_fc(months, values, min_train=6, horizon=3, max_win=12):
     err1, err3 = [], []
     for t in range(min_train, n):
         i0 = max(0, t - max_win)
-        a, b = _theil_sen(x[i0:t], ys[i0:t])
-        err1.append(ys[t] - (a + b * x[t]))
+        _, b_t = _theil_sen(x[i0:t], ys[i0:t])
+        err1.append(ys[t] - (ys[t - 1] + b_t))
         if t + 2 < n:
-            err3.append(ys[t + 2] - (a + b * x[t + 2]))
+            err3.append(ys[t + 2] - (ys[t - 1] + b_t * 3))
     i0 = max(0, n - max_win)
-    a, b = _theil_sen(x[i0:], ys[i0:])
+    _, b = _theil_sen(x[i0:], ys[i0:])
     mae = float(np.mean(np.abs(err1))) if err1 else None
     p80 = float(np.percentile(np.abs(err1), 80)) if len(err1) >= 4 else (mae * 1.6 if mae else 6.0)
     p80_3 = float(np.percentile(np.abs(err3), 80)) if len(err3) >= 4 else p80 * 1.8
     yhat, lo, hi, fut = [], [], [], []
-    last_x = x[-1]
+    last_y = ys[-1]
     last_p = ms[-1]
     for h in range(1, horizon + 1):
-        pred = float(np.clip(a + b * (last_x + h), 0, 100))
+        pred = float(np.clip(last_y + b * h, 0, 100))
         w = p80 if h == 1 else p80 + (p80_3 - p80) * min(h - 1, 2) / 2
         yhat.append(round(pred, 1))
         lo.append(round(float(np.clip(pred - w, 0, 100)), 1))
@@ -424,7 +425,7 @@ function chart(id){
   const ticks=pts.filter((_,i)=>i===0||i===pts.length-1||i===Math.floor(pts.length/2))
     .map(pt=>`<text x="${X(pt.x)}" y="${h-10}" fill="#8b9bb4" font-size="10">${pt.m}</text>`).join('');
   const cap=fc
-    ? `Línea azul = score mensual. El punto rojo es el giro vigente: el primer mes del último episodio en que el comportamiento se torció frente a su propia historia. No es cualquier salto (un mes de caja loco no cuenta). Discontinuo = proyección a 3 meses desde el último score real. MAE ${fc.mae??'—'} pts.`
+    ? `Línea azul = score mensual. El punto rojo es el giro vigente (último episodio). Discontinuo = si la pendiente reciente se mantiene, a 3 meses; parte del último score, no vuelve a una recta. MAE ${fc.mae??'—'} pts.`
     : 'Línea azul = score mensual. Punto rojo = primer giro. Sin proyección: menos de 6 meses puntuados.';
   return `<svg class="ch" viewBox="0 0 ${w} ${h}">
     ${grid}
@@ -731,12 +732,10 @@ function metodo(){
   </div>
   <div class="card" style="margin-top:12px">
     <h2>Bonus · proyección walk-forward del score</h2>
-    <p class="note">No predice quiebras. Predice el propio score a 1–3 meses, que es
-    la única etiqueta que existe. En cada origen se entrena con los últimos meses
-    (se empieza en 6, se amplia hasta 12 y luego la ventana se desliza), se valida
-    el mes siguiente y se avanza. Así un régimen antiguo no manda después de un giro.
-    La sombra es el p80 del error fuera de muestra. Theil-Sen, no OLS. El score del
-    motor no usa esta proyección: es solo lectura en la ficha.</p>
+    <p class="note">No predice quiebras. Predice el propio score a 1–3 meses: pendiente
+    Theil-Sen de los últimos 6–12 meses, aplicada desde el último score real
+    (no se vuelve a una recta global: un pico no fabrica un crash). La sombra es el
+    p80 del error walk-forward de esa misma regla. El motor no usa esta proyección.</p>
   </div>
     <p class="note">Fechas imposibles se reparan, ceros y p99 no entran, fuera de la ventana = NaN.
     No se convierte todo a EUR: el tipo es 1 en el 64% de las cuentas no-EUR. Los ratios bastan.
