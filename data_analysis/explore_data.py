@@ -107,7 +107,26 @@ def auditar_facturas(inv):
         log(f"    Valores reconocidos por el mapeo: {sorted(reconocidos) or 'NINGUNO → fallback por signo'}")
     else:
         log("  Dirección: NO HAY COLUMNA → fallback por signo del importe.")
-        log("    Las rectificativas de venta se contarán como compras. Limitación documentada.")
+        log("    Riesgo: si el signo es la convención real (+venta/-compra), el fallback")
+        log("    puede ser CORRECTO. Verificar con el desglose de document_type/concept.")
+
+    col_doc = cfg.detectar(inv, "document_kind")
+    log("--- DOCUMENT_TYPE / CONCEPT (para separar rectificativas de dirección) ---")
+    if col_doc:
+        vals_doc = inv[col_doc].astype(str).str.strip().str.lower()
+        log(f"  Columna '{col_doc}': {dict(vals_doc.value_counts().head(10))}")
+        reconocidos_doc = set(vals_doc.unique()) & cfg.VALORES_RECTIFICATIVA
+        log(f"    Valores reconocidos como rectificativa: {sorted(reconocidos_doc) or 'NINGUNO'}")
+    else:
+        log("  Sin columna de tipo de documento.")
+    if "concept" in inv.columns:
+        log(f"  'concept' (top 10, orientativo): "
+            f"{dict(inv['concept'].astype(str).str.lower().value_counts().head(10))}")
+    a_neg = pd.to_numeric(inv["amount"], errors="coerce") < 0
+    log(f"  amount < 0: {int(a_neg.sum()):,} ({a_neg.mean()*100:.1f}%)  ← si document_type no")
+    log(f"    confirma que esto son rectificativas, NO se debe llamar así en el pipeline;")
+    log(f"    lo más probable es que sea la convención de signo de la dirección.")
+    log()
 
     if col_pago:
         log(f"  Fecha de pago: '{col_pago}' → estado overdue reconstruible as-of por mes.")
@@ -127,6 +146,33 @@ def auditar_facturas(inv):
         p = pd.to_numeric(inv["pending_amount"], errors="coerce")
         log(f"  pending_amount nulo: {int(p.isna().sum()):,}")
         log(f"  Filas con |pending| > |amount|: {int((p.abs() > a.abs() + 1e-6).sum()):,}")
+    log()
+
+    auditar_multidivisa(inv, "INVOICES")
+
+
+# =============================================================================
+# MULTIDIVISA
+# =============================================================================
+
+def auditar_multidivisa(df, nombre):
+    if "currency" not in df.columns:
+        return
+    log(f"--- MULTIDIVISA ({nombre}) ---")
+    log(f"  currency: {dict(df['currency'].value_counts())}")
+    if "accounting_currency" in df.columns:
+        log(f"  accounting_currency: {dict(df['accounting_currency'].value_counts())}")
+        distinto = (df["currency"].astype(str) != df["accounting_currency"].astype(str))
+        log(f"  Filas con currency != accounting_currency: {int(distinto.sum()):,} "
+            f"({distinto.mean()*100:.2f}%)")
+        if distinto.any() and "exchange_rate" in df.columns:
+            er = pd.to_numeric(df.loc[distinto, "exchange_rate"], errors="coerce")
+            log(f"    exchange_rate en esas filas: nulo={int(er.isna().sum())}, "
+                f"rango=[{er.min():.4f}, {er.max():.4f}]")
+            log("    Si accounting_currency es homogénea, se puede normalizar con")
+            log("    amount * exchange_rate antes de sumar entre empresas.")
+        elif distinto.any():
+            log("    AVISO: hay divisas mixtas y no hay exchange_rate para convertir.")
     log()
 
 
@@ -152,6 +198,18 @@ def auditar_balances(bal, banking):
     else:
         log("  Snapshot único por producto: la suma directa es válida.")
 
+    for extra_col in ("available", "countable", "liquidity"):
+        if extra_col in bal.columns:
+            s = bal[extra_col]
+            if s.dtype == bool or set(s.dropna().unique()) <= {0, 1, True, False}:
+                log(f"  '{extra_col}': {dict(s.value_counts(dropna=False))}")
+            else:
+                diff = pd.to_numeric(s, errors="coerce") - pd.to_numeric(bal["balance"], errors="coerce")
+                log(f"  '{extra_col}' vs 'balance': diferencia media {diff.mean():,.2f}, "
+                    f"máx abs {diff.abs().max():,.2f}")
+                log("    Si difieren, 'available' puede ser el saldo realmente disponible")
+                log("    (descontando retenciones), más fiel para runway que 'balance'.")
+
     if banking is not None and "type" in banking.columns:
         tipos = banking["type"].value_counts()
         log(f"  Tipos en banking_products: {dict(tipos)}")
@@ -174,8 +232,18 @@ def auditar_deuda(debt):
     log("  El signo RAW no se interpreta como riesgo: el pipeline usa la magnitud.")
     if "granted" in debt.columns:
         g = pd.to_numeric(debt["granted"], errors="coerce").fillna(0)
-        log(f"  Productos con granted = 0: {int((g == 0).sum()):,} de {len(debt):,}")
-        log("    Por eso se descarta el ratio de utilización y se usa deuda/ingresos.")
+        log(f"  Productos con granted = 0 (global): {int((g == 0).sum()):,} de {len(debt):,} "
+            f"({(g == 0).mean()*100:.1f}%)")
+        col_tipo = cfg.detectar(debt, "debt_type")
+        if col_tipo:
+            log(f"  Desglose de granted=0 por '{col_tipo}' "
+                f"(la cifra global puede esconder que un solo tipo concentre los ceros):")
+            tabla = (pd.DataFrame({"tipo": debt[col_tipo], "granted_cero": (g == 0)})
+                    .groupby("tipo")["granted_cero"].agg(["sum", "count"]))
+            for tipo, fila in tabla.iterrows():
+                log(f"    {tipo}: {int(fila['sum'])}/{int(fila['count'])} "
+                    f"({fila['sum']/fila['count']*100:.1f}%) con granted=0")
+    auditar_multidivisa(debt, "DEBT_PRODUCTS")
     log()
 
 

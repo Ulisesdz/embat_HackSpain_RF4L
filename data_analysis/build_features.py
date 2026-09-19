@@ -6,7 +6,10 @@ Principios:
   - "Sin dato" y "cero" son cosas distintas: ratios a NaN + flags de disponibilidad.
   - Nivel, tendencia, persistencia y recuperación, no solo la foto.
   - Toda variable monetaria tiene su versión normalizada por tamaño.
-  - El signo RAW de balances y deuda no se interpreta como signo económico.
+  - Caja y deuda son snapshots actuales: solo entran en el último mes evaluable,
+    nunca se propagan hacia atrás por todo el histórico.
+  - Los importes de factura se normalizan a accounting_currency cuando el tipo de
+    cambio es válido; las filas no convertibles quedan auditadas.
 """
 
 import json
@@ -34,6 +37,47 @@ def leer(nombre, obligatorio=True):
 
 def num(s):
     return pd.to_numeric(s, errors="coerce")
+
+
+def normalizar_importes(inv):
+    """Lleva amount/pending_amount a accounting_currency cuando es posible.
+
+    Si moneda == accounting_currency no hace falta conversión. Si son distintas,
+    exige exchange_rate > 0. No se inventan tipos de cambio para filas inválidas.
+    """
+    inv["currency"] = inv.get("currency", "").astype(str).str.upper().str.strip()
+    inv["accounting_currency"] = inv.get("accounting_currency", "").astype(str).str.upper().str.strip()
+    inv["exchange_rate"] = num(inv.get("exchange_rate", np.nan))
+
+    misma = (
+        inv["currency"].notna()
+        & inv["accounting_currency"].notna()
+        & (inv["currency"] == inv["accounting_currency"])
+    )
+    rate_ok = inv["exchange_rate"].gt(0) & np.isfinite(inv["exchange_rate"])
+    convertible = misma | rate_ok
+
+    inv["amount_reporting"] = np.where(
+        misma, inv["amount"], np.where(rate_ok, inv["amount"] * inv["exchange_rate"], np.nan)
+    )
+    inv["pending_reporting"] = np.where(
+        misma,
+        inv["pending_amount"],
+        np.where(rate_ok, inv["pending_amount"] * inv["exchange_rate"], np.nan),
+    )
+
+    distinta = inv["currency"].ne(inv["accounting_currency"])
+    AUDIT["inv_moneda_distinta_contable"] = int(distinta.sum())
+    AUDIT["inv_tipo_cambio_invalido_en_monedas_distintas"] = int((distinta & ~rate_ok).sum())
+    AUDIT["inv_importes_no_convertibles"] = int((~convertible).sum())
+    if distinta.any():
+        AUDIT["inv_exchange_rate_min_no_nulo"] = float(inv.loc[distinta & rate_ok, "exchange_rate"].min()) if (distinta & rate_ok).any() else None
+        AUDIT["inv_exchange_rate_max_no_nulo"] = float(inv.loc[distinta & rate_ok, "exchange_rate"].max()) if (distinta & rate_ok).any() else None
+        AUDIT["inv_pares_moneda_top"] = (
+            inv.loc[distinta, ["currency", "accounting_currency"]]
+            .value_counts().head(15).reset_index().astype(str).to_dict("records")
+        )
+    return inv
 
 
 def roll_mean(df, col, w, strict=True):
@@ -91,6 +135,33 @@ def build_transacciones():
 # 2. FACTURAS
 # =============================================================================
 
+def detectar_rectificativa(inv):
+    """Rectificativa real, no 'amount < 0'. El signo marca dirección en la
+    convención receivable(+)/payable(-), no una corrección contable."""
+    col = cfg.detectar(inv, "document_kind")
+    if col is not None:
+        vals = inv[col].astype(str).str.strip().str.lower()
+        es_rect = vals.isin(cfg.VALORES_RECTIFICATIVA)
+        if es_rect.any():
+            print(f"  Rectificativas resueltas por '{col}' ({int(es_rect.sum()):,} filas)")
+            AUDIT["rectificativa_metodo"] = f"columna:{col}"
+            return es_rect
+        print(f"  [WARN] '{col}' no contiene valores de rectificativa reconocidos.")
+
+    if "concept" in inv.columns:
+        c = inv["concept"].astype(str).str.lower()
+        es_rect = c.str.contains("|".join(cfg.VALORES_RECTIFICATIVA), na=False, regex=True)
+        if es_rect.any():
+            print(f"  Rectificativas resueltas por texto en 'concept' ({int(es_rect.sum()):,} filas)")
+            AUDIT["rectificativa_metodo"] = "concept_texto"
+            return es_rect
+
+    print("  [WARN] Sin columna fiable para rectificativas. NO se usa 'amount < 0' como")
+    print("         proxy (mezclaría dirección con corrección). Se marca todo en 0.")
+    AUDIT["rectificativa_metodo"] = "no_detectable_se_asume_cero"
+    return pd.Series(False, index=inv.index)
+
+
 def clasificar_direccion(inv):
     """Cobrable (venta) vs pagable (compra). Coincidencia exacta, nunca substring."""
     col = cfg.detectar(inv, "direction")
@@ -110,8 +181,9 @@ def clasificar_direccion(inv):
         AUDIT["direccion_metodo"] = "client_id/supplier_id"
         return inv["client_id"].notna()
 
-    print("  [WARN] Fallback al signo del importe: las rectificativas de venta")
-    print("         se contarán como compras. Limitación documentada.")
+    print("  [WARN] Fallback al signo del importe para la dirección.")
+    print("         Si la convención real es receivable(+)/payable(-), esto es correcto;")
+    print("         verificar con el desglose de document_type en el informe de calidad.")
     AUDIT["direccion_metodo"] = "fallback_signo"
     return num(inv["amount"]) > 0
 
@@ -121,7 +193,7 @@ def marcar_impago(inv):
     col_pago = cfg.detectar(inv, "payment_date")
     if col_pago:
         inv["payment_date"] = pd.to_datetime(inv[col_pago], errors="coerce")
-        fin_mes = inv["year_month"].dt.to_timestamp(how="end")
+        fin_mes = inv["year_month_vencimiento"].dt.to_timestamp(how="end")
         inv["is_overdue"] = (inv["due_date"] <= fin_mes) & (
             inv["payment_date"].isna() | (inv["payment_date"] > fin_mes))
         inv["dias_retraso"] = (inv["payment_date"] - inv["due_date"]).dt.days.clip(lower=0)
@@ -138,47 +210,81 @@ def marcar_impago(inv):
 
 def build_facturas():
     inv = leer("invoices.csv")
-    fechas = pd.to_datetime(inv["due_date"], errors="coerce")
-    AUDIT["inv_filas_raw"] = int(len(inv))
-    AUDIT["inv_fechas_invalidas"] = int(fechas.isna().sum())
+    due = pd.to_datetime(inv["due_date"], errors="coerce")
+    issue_col = "issuance_date" if "issuance_date" in inv.columns else None
+    issue = pd.to_datetime(inv[issue_col], errors="coerce") if issue_col else due.copy()
 
-    inv = inv.assign(due_date=fechas).dropna(subset=["due_date", "company_id"])
-    inv = inv[(inv["due_date"] >= cfg.START_DATE) & (inv["due_date"] <= cfg.END_DATE)].copy()
-    inv["year_month"] = inv["due_date"].dt.to_period("M")
+    AUDIT["inv_filas_raw"] = int(len(inv))
+    AUDIT["inv_fechas_invalidas_due"] = int(due.isna().sum())
+    AUDIT["inv_fechas_invalidas_issuance"] = int(issue.isna().sum()) if issue_col else None
+
+    inv = inv.assign(due_date=due, issuance_date=issue)
+    inv = inv.dropna(subset=["company_id", "due_date"])
+
+    # Para morosidad necesitamos conservar facturas cuyo vencimiento cae en la
+    # ventana; para volumen mensual usamos SIEMPRE issuance_date.
+    en_ventana_due = inv["due_date"].between(cfg.START_DATE, cfg.END_DATE)
+    en_ventana_issue = inv["issuance_date"].between(cfg.START_DATE, cfg.END_DATE)
+    inv = inv[en_ventana_due | en_ventana_issue].copy()
+
+    inv["year_month"] = inv["issuance_date"].dt.to_period("M")
+    inv["year_month_vencimiento"] = inv["due_date"].dt.to_period("M")
 
     inv["amount"] = num(inv["amount"])
     inv["pending_amount"] = num(inv.get("pending_amount", inv["amount"]))
-    inv["amount_abs"] = inv["amount"].abs()
-    inv["pending_abs"] = inv["pending_amount"].abs()
-    inv["is_credit_note"] = (inv["amount"] < 0).astype(int)
+    inv = normalizar_importes(inv)
+
+    # Para cálculos monetarios solo entran importes convertibles.
+    inv["amount_abs"] = inv["amount_reporting"].abs()
+    inv["pending_abs"] = inv["pending_reporting"].abs()
+    inv["is_credit_note"] = detectar_rectificativa(inv).astype(int)
     inv["is_receivable"] = clasificar_direccion(inv)
     inv = marcar_impago(inv)
 
     AUDIT["inv_filas_en_ventana"] = int(len(inv))
+    AUDIT["inv_filas_con_issuance_en_ventana"] = int(en_ventana_issue.loc[inv.index].sum())
+    AUDIT["inv_filas_con_due_en_ventana"] = int(en_ventana_due.loc[inv.index].sum())
     AUDIT["inv_rectificativas_en_ventana"] = int(inv["is_credit_note"].sum())
 
-    # ---- Cohorte: volumen y atrapado por mes de vencimiento ----------------
     def cohorte(mask, sufijo):
-        d = inv[mask]
+        # Volumen: mes de emisión. Impago: mes de vencimiento.
+        d = inv[mask & inv["year_month"].notna() & inv["amount_abs"].notna()]
         tot = d.groupby(["company_id", "year_month"], as_index=False).agg(
             **{f"volumen_{sufijo}": ("amount_abs", "sum"),
-               f"n_fact_{sufijo}": ("amount_abs", "size")})
-        ovr = d[d["is_overdue"]].groupby(["company_id", "year_month"], as_index=False).agg(
+               f"n_fact_{sufijo}": ("amount_abs", "size")}
+        )
+
+        d_ovr = inv[
+            mask
+            & inv["year_month_vencimiento"].between(cfg.MONTH_START, cfg.MONTH_END)
+            & inv["is_overdue"]
+            & inv["pending_abs"].notna()
+        ]
+        ovr = d_ovr.groupby(
+            ["company_id", "year_month_vencimiento"], as_index=False
+        ).agg(
             **{f"atrapado_{sufijo}": ("pending_abs", "sum"),
-               f"n_overdue_{sufijo}": ("pending_abs", "size")})
+               f"n_overdue_{sufijo}": ("pending_abs", "size")}
+        ).rename(columns={"year_month_vencimiento": "year_month"})
+
         return tot.merge(ovr, on=["company_id", "year_month"], how="left")
 
     ventas = cohorte(inv["is_receivable"], "ventas")
     compras = cohorte(~inv["is_receivable"], "compras")
 
-    # ---- Stock vivo de impago (asfixia acumulada) --------------------------
-    # Evento contable: +pending en el mes de vencimiento, -pending en el de cobro.
-    # Sin fecha de pago no hay evento de salida y el stock es una cota superior.
     def eventos(mask, nombre):
-        d = inv[mask & inv["is_overdue"]]
+        d = inv[
+            mask
+            & inv["is_overdue"]
+            & inv["year_month_vencimiento"].between(cfg.MONTH_START, cfg.MONTH_END)
+            & inv["pending_abs"].notna()
+        ]
         if d.empty:
             return pd.DataFrame(columns=["company_id", "year_month", nombre])
-        entra = d.groupby(["company_id", "year_month"])["pending_abs"].sum()
+
+        entra = d.groupby(["company_id", "year_month_vencimiento"])["pending_abs"].sum()
+        entra.index.names = ["company_id", "year_month"]
+
         if d["payment_date"].notna().any():
             pagadas = d[d["payment_date"].notna()].copy()
             pagadas["ym_pago"] = pagadas["payment_date"].dt.to_period("M")
@@ -192,22 +298,27 @@ def build_facturas():
     flujo_stock_cli = eventos(inv["is_receivable"], "_delta_stock_clientes")
     flujo_stock_prov = eventos(~inv["is_receivable"], "_delta_stock_prov")
 
-    # ---- DSO real ----------------------------------------------------------
     if inv["dias_retraso"].notna().any():
-        dso = (inv[inv["is_receivable"]]
-               .groupby(["company_id", "year_month"], as_index=False)["dias_retraso"]
-               .mean().rename(columns={"dias_retraso": "dso_dias"}))
-        dpo = (inv[~inv["is_receivable"]]
-               .groupby(["company_id", "year_month"], as_index=False)["dias_retraso"]
-               .mean().rename(columns={"dias_retraso": "dpo_dias"}))
+        dso = (
+            inv[inv["is_receivable"] & inv["year_month"].notna()]
+            .groupby(["company_id", "year_month"], as_index=False)["dias_retraso"]
+            .mean().rename(columns={"dias_retraso": "dso_dias"})
+        )
+        dpo = (
+            inv[(~inv["is_receivable"]) & inv["year_month"].notna()]
+            .groupby(["company_id", "year_month"], as_index=False)["dias_retraso"]
+            .mean().rename(columns={"dias_retraso": "dpo_dias"})
+        )
     else:
         dso = pd.DataFrame(columns=["company_id", "year_month", "dso_dias"])
         dpo = pd.DataFrame(columns=["company_id", "year_month", "dpo_dias"])
 
-    notas = inv[inv["is_credit_note"] == 1].groupby(
-        ["company_id", "year_month"], as_index=False).agg(
+    notas = inv[
+        (inv["is_credit_note"] == 1) & inv["year_month"].notna()
+    ].groupby(["company_id", "year_month"], as_index=False).agg(
         volumen_rectificativas=("amount_abs", "sum"),
-        n_rectificativas=("amount_abs", "size"))
+        n_rectificativas=("amount_abs", "size")
+    )
 
     return ventas, compras, flujo_stock_cli, flujo_stock_prov, dso, dpo, notas, inv
 
@@ -220,39 +331,53 @@ def build_caja():
     bal = leer("balances.csv", obligatorio=False)
     bp = leer("banking_products.csv", obligatorio=False)
     if bal is None:
-        return pd.DataFrame(columns=["company_id"])
+        return pd.DataFrame(columns=["company_id", "year_month"])
 
     bal["balance"] = num(bal["balance"])
     col_fecha = cfg.detectar(bal, "balance_date")
     por_producto = bal.groupby("product_id").size()
 
-    if col_fecha and por_producto.max() > 1:
+    if col_fecha:
         bal[col_fecha] = pd.to_datetime(bal[col_fecha], errors="coerce")
-        bal = bal[bal[col_fecha] <= cfg.END_DATE]
-        # Último snapshot POR PRODUCTO, no la fecha máxima global: los productos
-        # no reportan todos el mismo día.
+        bal = bal.dropna(subset=[col_fecha])
+        # Un snapshot actual NO se propaga hacia atrás. Solo se usa como
+        # estado actual en el último mes completo evaluado.
+        bal = bal[bal[col_fecha] <= cfg.EXTRACTION_DATE].copy()
+        if bal.empty:
+            return pd.DataFrame(columns=["company_id", "year_month"])
         bal = bal.sort_values(col_fecha).groupby("product_id", as_index=False).last()
         AUDIT["balances_modo"] = f"ultimo_snapshot_por_producto:{col_fecha}"
-    elif por_producto.max() > 1:
-        AUDIT["balances_modo"] = "serie_temporal_sin_fecha_NO_DESAMBIGUABLE"
-        print("  [WARN] balances tiene varias filas por producto y ninguna fecha.")
+        AUDIT["balances_snapshot_max"] = str(bal[col_fecha].max().date())
     else:
-        AUDIT["balances_modo"] = "snapshot_unico"
+        AUDIT["balances_modo"] = "snapshot_sin_fecha"
+        print("  [WARN] balances no tiene fecha; se trata como snapshot actual.")
 
     if bp is not None and {"product_id", "type"}.issubset(bp.columns):
-        bal = bal.merge(bp[["product_id", "type"]].drop_duplicates("product_id"),
-                        on="product_id", how="inner")
+        bal = bal.merge(
+            bp[["product_id", "type"]].drop_duplicates("product_id"),
+            on="product_id", how="inner"
+        )
         tipos = bal["type"].astype(str).str.lower()
         mask = tipos.apply(lambda t: any(k in t for k in cfg.TIPOS_CAJA))
         if mask.any():
-            AUDIT["balances_tipos_incluidos"] = sorted(bal.loc[mask, "type"].unique().tolist())
-            bal = bal[mask]
+            AUDIT["balances_tipos_incluidos"] = sorted(
+                bal.loc[mask, "type"].astype(str).unique().tolist()
+            )
+            bal = bal[mask].copy()
         else:
-            AUDIT["balances_tipos_incluidos"] = "ninguno_reconocido_se_usan_todos"
+            AUDIT["balances_tipos_incluidos"] = "ninguno_reconocido"
+            bal = bal.iloc[0:0].copy()
+
+    # Valores centinela conocidos / no financieros se dejan fuera del saldo.
+    sentinel = bal["balance"].abs().isin(cfg.VALORES_SENTINELA_BALANCE)
+    AUDIT["balances_sentinelas_excluidos"] = int(sentinel.sum())
+    bal.loc[sentinel, "balance"] = np.nan
 
     out = bal.groupby("company_id", as_index=False).agg(caja_real=("balance", "sum"))
-    # El signo se conserva: caja negativa es información, no ruido.
     out["caja_negativa_flag"] = (out["caja_real"] < 0).astype(int)
+    out["caja_reportada"] = out["caja_real"].notna().astype(int)
+    # Snapshot actual: solo el último mes completo del score.
+    out["year_month"] = cfg.MONTHS[cfg.MONTHS < cfg.PARTIAL_MONTHS[0]][-1]
     AUDIT["balances_empresas"] = int(out["company_id"].nunique())
     AUDIT["balances_caja_mediana"] = float(out["caja_real"].median())
     return out
@@ -261,12 +386,29 @@ def build_caja():
 def build_deuda():
     debt = leer("debt_products.csv", obligatorio=False)
     if debt is None:
-        return pd.DataFrame(columns=["company_id"])
+        return pd.DataFrame(columns=["company_id", "year_month"])
+
     debt["outstanding"] = num(debt["outstanding"])
     out = debt.groupby("company_id", as_index=False).agg(
-        deuda_raw=("outstanding", "sum"), n_deudas=("outstanding", "size"))
+        deuda_raw=("outstanding", "sum"), n_deudas=("outstanding", "size")
+    )
     out["deuda_viva"] = out["deuda_raw"].abs()
     out["deuda_signo_negativo_flag"] = (out["deuda_raw"] < 0).astype(int)
+
+    # debt_products no contiene fecha de snapshot. Por tanto, NO se backfillea:
+    # representa estado actual y solo entra en el último mes completo.
+    out["year_month"] = cfg.MONTHS[cfg.MONTHS < cfg.PARTIAL_MONTHS[0]][-1]
+
+    if "currency" in debt.columns:
+        curr = debt["currency"].astype(str).str.upper().str.strip()
+        n_curr = debt.assign(_currency=curr).groupby("company_id")["_currency"].nunique()
+        out["deuda_multimoneda"] = out["company_id"].map(n_curr).gt(1).astype(int)
+        out["deuda_no_eur"] = out["company_id"].map(
+            debt.assign(_no_eur=~curr.eq("EUR")).groupby("company_id")["_no_eur"].max()
+        ).fillna(False).astype(int)
+        AUDIT["deuda_empresas_multimoneda"] = int((n_curr > 1).sum())
+        AUDIT["deuda_empresas_con_moneda_no_eur"] = int(out["deuda_no_eur"].sum())
+
     AUDIT["deuda_empresas"] = int(out["company_id"].nunique())
     return out.drop(columns=["deuda_raw"])
 
@@ -330,9 +472,11 @@ def build_panel():
     panel = derivar(panel)
 
     print("\n[6/6] Normalización y confianza...")
+    # Caja y deuda son snapshots actuales: se unen por empresa + último mes
+    # completo, nunca por company_id a todos los meses históricos.
     for extra in (caja, deuda):
         if not extra.empty:
-            panel = panel.merge(extra, on="company_id", how="left")
+            panel = panel.merge(extra, on=["company_id", "year_month"], how="left")
     panel = normalizar(panel, companies)
 
     panel["year_month"] = panel["year_month"].astype(str)
@@ -343,6 +487,7 @@ def build_panel():
         "ventana_fin": str(cfg.END_DATE.date()),
         "buckets_mensuales": len(cfg.MONTHS),
         "meses_parciales_excluidos_del_score": [str(m) for m in cfg.PARTIAL_MONTHS],
+        "mes_snapshot_financiero_actual": str(cfg.MONTHS[cfg.MONTHS < cfg.PARTIAL_MONTHS[0]][-1]),
         "panel_filas": int(len(panel)),
         "panel_columnas": int(panel.shape[1]),
         "panel_empresas": int(panel["company_id"].nunique()),
@@ -384,15 +529,25 @@ def derivar(panel):
         100 * panel["atrapado_compras"] / panel["volumen_compras"], np.nan)
 
     # ---- Morosidad sobre sumas móviles (robusta a meses de pocas facturas) -
+    # Con ~1 factura/mes por empresa, una ventana de 3 meses partida entre
+    # ventas y compras a menudo no llega al mínimo. Si falla, se intenta con
+    # 6 meses antes de rendirse a NaN, y se deja constancia de qué ventana
+    # sostiene el dato para que el score pueda rebajar su confianza.
     for nombre, num_c, den_c, nf_c in [
         ("pct_clientes_morosos_3m", "atrapado_ventas", "volumen_ventas", "n_fact_ventas"),
         ("pct_impagos_prov_3m", "atrapado_compras", "volumen_compras", "n_fact_compras"),
     ]:
-        n3 = roll_sum(panel, num_c, cfg.ROLL_SHORT)
-        d3 = roll_sum(panel, den_c, cfg.ROLL_SHORT)
-        f3 = roll_sum(panel, nf_c, cfg.ROLL_SHORT)
-        ratio = np.where(d3 > 0, 100 * n3 / d3, np.nan)
-        panel[nombre] = np.where(f3 >= cfg.MIN_FACTURAS_RATIO, ratio, np.nan)
+        n3, d3, f3 = roll_sum(panel, num_c, cfg.ROLL_SHORT), roll_sum(panel, den_c, cfg.ROLL_SHORT), roll_sum(panel, nf_c, cfg.ROLL_SHORT)
+        n6, d6, f6 = roll_sum(panel, num_c, cfg.ROLL_LONG), roll_sum(panel, den_c, cfg.ROLL_LONG), roll_sum(panel, nf_c, cfg.ROLL_LONG)
+
+        ratio_3m = np.where(d3 > 0, 100 * n3 / d3, np.nan)
+        ratio_6m = np.where(d6 > 0, 100 * n6 / d6, np.nan)
+
+        usa_3m = f3 >= cfg.MIN_FACTURAS_RATIO
+        usa_6m = (~usa_3m) & (f6 >= cfg.MIN_FACTURAS_RATIO_LARGO)
+
+        panel[nombre] = np.select([usa_3m, usa_6m], [ratio_3m, ratio_6m], default=np.nan)
+        panel[f"{nombre}_fuente"] = np.select([usa_3m, usa_6m], ["3m", "6m"], default="sin_datos")
         panel[f"n_fact_{nombre.split('_')[1]}_3m"] = f3
 
     # ---- Stock vivo de impago ---------------------------------------------
@@ -437,24 +592,46 @@ def derivar(panel):
 
 
 def normalizar(panel, companies):
-    for c in ["caja_real", "deuda_viva", "n_deudas", "caja_negativa_flag",
-              "deuda_signo_negativo_flag"]:
-        if c in panel.columns:
-            panel[c] = panel[c].fillna(0)
-        else:
-            panel[c] = 0.0
+    # caja_real y caja_negativa_flag NO se rellenan a 0: la ausencia de un
+    # balance reportado es "sin visibilidad", no "cero en caja". Confundirlas
+    # hundía el runway de las empresas sin cuenta corriente detectada.
+    if "caja_real" not in panel.columns:
+        panel["caja_real"] = np.nan
+    panel["caja_reportada"] = panel.get("caja_reportada", 0)
+    panel["caja_reportada"] = panel["caja_reportada"].fillna(0).astype(int)
+    if "caja_negativa_flag" in panel.columns:
+        panel["caja_negativa_flag"] = np.where(panel["caja_reportada"] == 1,
+                                               panel["caja_negativa_flag"], np.nan)
+
+    for c in ["deuda_viva", "n_deudas", "deuda_signo_negativo_flag"]:
+        if c not in panel.columns:
+            panel[c] = np.nan
+    # La ausencia histórica significa "sin snapshot", no "deuda cero".
+    if "deuda_viva" in panel.columns:
+        panel.loc[panel["deuda_viva"].notna(), "n_deudas"] = panel.loc[
+            panel["deuda_viva"].notna(), "n_deudas"
+        ].fillna(0)
+        panel.loc[panel["deuda_viva"].notna(), "deuda_signo_negativo_flag"] = panel.loc[
+            panel["deuda_viva"].notna(), "deuda_signo_negativo_flag"
+        ].fillna(0)
 
     # ---- Variables escala-libre: comparables entre una pyme y un grupo -----
     panel["flujo_relativo"] = np.where(panel["ingresos_12m_avg"] > 0,
                                        panel["flujo_neto"] / panel["ingresos_12m_avg"], np.nan)
     panel["flujo_relativo_3m"] = roll_mean(panel, "flujo_relativo", cfg.ROLL_SHORT)
-    panel["runway_meses"] = np.where(panel["gastos_3m_avg"] > 0,
-                                     panel["caja_real"] / panel["gastos_3m_avg"],
-                                     np.nan)
-    panel["runway_meses"] = panel["runway_meses"].clip(-12, 60)
-    panel["deuda_sobre_ingresos"] = np.where(panel["ingresos_12m_avg"] > 0,
-                                             panel["deuda_viva"] / (panel["ingresos_12m_avg"] * 12),
-                                             np.nan)
+    # min_periods=1 aquí daría "runway" a partir de un solo mes de gasto, que
+    # puede ser casi nulo en el primer mes de actividad y disparar el ratio
+    # al techo. Se exige un mínimo de MIN_MESES_RUNWAY antes de calcularlo.
+    gastos_runway = panel.groupby("company_id")["caja_gastos"].transform(
+        lambda s: s.rolling(cfg.ROLL_SHORT, min_periods=cfg.MIN_MESES_RUNWAY).mean())
+    panel["runway_meses"] = np.where(
+        (gastos_runway > 0) & (panel["caja_reportada"] == 1),
+        panel["caja_real"] / gastos_runway, np.nan)
+    # No se usa un techo 60: la transformación al score ya es monótona.
+    panel["runway_meses"] = panel["runway_meses"].clip(lower=-12)
+    panel["deuda_sobre_ingresos"] = np.where(
+        (panel["ingresos_12m_avg"] > 0) & panel["deuda_viva"].notna(),
+        panel["deuda_viva"] / (panel["ingresos_12m_avg"] * 12), np.nan)
     panel["stock_prov_sobre_ingresos"] = np.where(panel["ingresos_12m_avg"] > 0,
                                                   panel["stock_overdue_prov"] / panel["ingresos_12m_avg"],
                                                   np.nan)
@@ -484,6 +661,11 @@ def normalizar(panel, companies):
     panel.loc[(panel["morosidad_censurada"] == 1) & (panel["confianza"] == "alta"),
               "confianza"] = "media"
     panel.loc[panel["mes_parcial"] == 1, "confianza"] = "baja"
+
+    # Visibilidad del snapshot actual: solo el último mes completo puede tenerla.
+    panel["snapshot_financiero_disponible"] = (
+        panel["caja_reportada"].eq(1) | panel["deuda_viva"].notna()
+    ).astype(int)
 
     if companies is not None:
         col_sector = cfg.detectar(companies, "sector")
@@ -517,6 +699,7 @@ def resumen(panel):
     print(f"  Morosidad cliente no fiable: {panel['pct_clientes_morosos_3m'].isna().mean()*100:.1f}% de filas")
     print(f"  Morosidad proveedor no fiable: {panel['pct_impagos_prov_3m'].isna().mean()*100:.1f}% de filas")
     print(f"  Confianza: {dict(panel['confianza'].value_counts())}")
+    print(f"  Filas con snapshot financiero actual: {int(panel['snapshot_financiero_disponible'].sum()):,}")
 
 
 if __name__ == "__main__":

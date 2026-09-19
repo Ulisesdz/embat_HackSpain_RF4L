@@ -1,10 +1,12 @@
-"""Validador del panel maestro. No modifica datos.
+"""
+Validador del panel maestro. No modifica datos.
 
-Falla con código 1 si alguna invariante se rompe. Ejecutar siempre antes de
-puntuar: un panel que no pasa estas pruebas invalida cualquier score.
+Falla con código 1 si alguna invariante estructural, temporal o numérica se rompe.
+Ejecutar siempre antes de puntuar.
 """
 
 import json
+import sys
 import numpy as np
 import pandas as pd
 
@@ -27,109 +29,278 @@ def warn(msg):
     print(f"[WARN] {msg}")
 
 
+def check_required(df, cols):
+    missing = [c for c in cols if c not in df.columns]
+    if missing:
+        fail(f"Faltan columnas obligatorias: {missing}")
+        return False
+    ok("Columnas obligatorias presentes")
+    return True
+
+
 def main():
     global ERRORES
+
     if not cfg.PANEL_PATH.exists():
-        raise FileNotFoundError(f"No existe {cfg.PANEL_PATH}. Ejecuta build_features.py.")
+        raise FileNotFoundError(
+            f"No existe {cfg.PANEL_PATH}. Ejecuta build_features.py."
+        )
 
     df = pd.read_csv(cfg.PANEL_PATH)
-    df["year_month"] = pd.PeriodIndex(df["year_month"], freq="M")
+    if df.empty:
+        fail("El panel está vacío")
+        sys.exit(1)
+
+    required = [
+        "company_id", "year_month", "flujo_neto",
+        "caja_ingresos", "caja_gastos", "volumen_ventas",
+        "volumen_compras", "deuda_viva",
+        "pct_clientes_morosos", "pct_impagos_prov",
+        "pct_clientes_morosos_3m", "pct_impagos_prov_3m",
+        "flujo_neto_3m_avg", "flujo_neto_6m_avg",
+        "clientes_morosos_3m_avg", "impagos_prov_3m_avg",
+        "caja_reportada", "mes_parcial", "confianza",
+    ]
+    if not check_required(df, required):
+        sys.exit(1)
+
+    try:
+        df["year_month"] = pd.PeriodIndex(df["year_month"], freq="M")
+    except Exception as exc:
+        fail(f"year_month no puede convertirse a Period[M]: {exc}")
+        sys.exit(1)
+
     esperados = set(cfg.MONTHS)
+    companies = df["company_id"].dropna().unique()
 
-    # 1. Cobertura temporal
-    counts = df.groupby("company_id")["year_month"].nunique()
-    if counts.min() != len(cfg.MONTHS) or counts.max() != len(cfg.MONTHS):
-        fail(f"Cada empresa debe tener {len(cfg.MONTHS)} meses; "
-             f"min={counts.min()}, max={counts.max()}")
+    # -------------------------------------------------------------------------
+    # Calendario
+    # -------------------------------------------------------------------------
+    if len(companies) == 0:
+        fail("No hay empresas")
     else:
-        ok(f"Todas las empresas tienen {len(cfg.MONTHS)} buckets mensuales.")
+        counts = df.groupby("company_id")["year_month"].nunique()
+        if counts.min() != len(cfg.MONTHS) or counts.max() != len(cfg.MONTHS):
+            fail("Alguna empresa no tiene exactamente 25 buckets mensuales")
+        else:
+            ok(f"Cada empresa tiene exactamente {len(cfg.MONTHS)} meses")
 
-    # 2. Calendario exacto
-    malos = [c for c, g in df.groupby("company_id")
-             if set(pd.PeriodIndex(g["year_month"], freq="M")) != esperados]
-    if malos:
-        fail(f"Empresas con calendario incorrecto: {len(malos)}")
-    else:
-        ok("Calendario alineado en todas las empresas.")
+        malos = [
+            c for c, g in df.groupby("company_id")
+            if set(g["year_month"]) != esperados
+        ]
+        if malos:
+            fail(f"Calendario incorrecto en {len(malos)} empresas")
+        else:
+            ok("Calendario coincide exactamente con cfg.MONTHS")
 
-    # 3. Duplicados
     dup = int(df.duplicated(["company_id", "year_month"]).sum())
-    fail(f"Duplicados company_id+year_month: {dup}") if dup else ok("Sin duplicados.")
-
-    # 4. Identidad contable
-    mismatch = ~np.isclose(df["caja_ingresos"] - df["caja_gastos"], df["flujo_neto"],
-                           atol=1e-6)
-    if mismatch.sum():
-        fail(f"flujo_neto != ingresos - gastos en {int(mismatch.sum())} filas.")
+    if dup:
+        fail(f"Hay {dup} duplicados company_id + year_month")
     else:
-        ok("flujo_neto = caja_ingresos - caja_gastos.")
+        ok("No hay duplicados company_id + year_month")
 
-    # 5. Ratios dentro de rango
-    for col in ["pct_clientes_morosos", "pct_impagos_prov",
-                "pct_clientes_morosos_3m", "pct_impagos_prov_3m"]:
-        if col not in df.columns:
-            continue
-        s = df[col]
-        fuera = s.notna() & ((s < -1e-9) | (s > 100 + 1e-9))
-        if fuera.any():
-            fail(f"{col}: {int(fuera.sum())} valores fuera de [0,100].")
-        else:
-            ok(f"{col} en [0,100] o NA.")
-
-    # 6. No negativos
-    for col in ["caja_ingresos", "caja_gastos", "volumen_ventas", "atrapado_ventas",
-                "volumen_compras", "atrapado_compras", "deuda_viva",
-                "stock_overdue_clientes", "stock_overdue_prov"]:
-        if col in df.columns and (df[col] < -1e-9).any():
-            fail(f"{col} contiene valores negativos.")
-
-    # 7. Los rolling estrictos no pueden existir antes de tener historia
-    orden = df.sort_values(["company_id", "year_month"])
-    for col, w in [("flujo_neto_3m_avg", 3), ("clientes_morosos_3m_avg", 3),
-                   ("impagos_prov_3m_avg", 3), ("flujo_neto_6m_avg", 6)]:
-        if col not in df.columns:
-            continue
-        primeras = orden.groupby("company_id")[col].head(w - 1)
-        if primeras.notna().any():
-            fail(f"{col} tiene valor antes de completar {w} meses.")
-        else:
-            ok(f"{col} respeta min_periods={w}.")
-
-    # 8. Disciplina de NaN: ratio sin denominador debe ser NA, no 0
-    if "volumen_ventas" in df.columns:
-        falsos_ceros = int(((df["volumen_ventas"] == 0)
-                            & df["pct_clientes_morosos"].notna()).sum())
-        if falsos_ceros:
-            fail(f"{falsos_ceros} filas con morosidad calculada sin volumen de ventas.")
-        else:
-            ok("Sin ratios inventados donde no hay denominador.")
-
-    # 9. Identificadores
-    if df["company_id"].isna().any() or df["year_month"].isna().any():
-        fail("Hay company_id / year_month nulos.")
+    # -------------------------------------------------------------------------
+    # Identidad de caja
+    # -------------------------------------------------------------------------
+    mismatch = ~np.isclose(
+        df["caja_ingresos"].fillna(0) - df["caja_gastos"].fillna(0),
+        df["flujo_neto"].fillna(0),
+        atol=1e-6,
+        equal_nan=False,
+    )
+    if mismatch.any():
+        fail(f"Identidad flujo_neto = ingresos - gastos rota en {int(mismatch.sum())} filas")
     else:
-        ok("Identificadores completos.")
+        ok("Identidad flujo_neto = ingresos - gastos")
 
-    # 10. Señales de alerta que no son errores
-    if "confianza" in df.columns:
-        baja = (df["confianza"] == "baja").mean() * 100
-        if baja > 30:
-            warn(f"{baja:.1f}% de filas con confianza baja: revisar cobertura.")
+    # -------------------------------------------------------------------------
+    # Ratios
+    # -------------------------------------------------------------------------
+    ratio_cols = [
+        "pct_clientes_morosos", "pct_impagos_prov",
+        "pct_clientes_morosos_3m", "pct_impagos_prov_3m",
+    ]
+    for c in ratio_cols:
+        bad = df[c].notna() & ((df[c] < 0) | (df[c] > 100))
+        if bad.any():
+            fail(f"{c}: {int(bad.sum())} valores fuera de [0,100]")
+        else:
+            ok(f"{c}: rango válido")
 
-    print("\n=== RESUMEN ===")
+    # -------------------------------------------------------------------------
+    # No negatividad de magnitudes que por construcción lo exigen
+    # -------------------------------------------------------------------------
+    nonnegative = [
+        "caja_ingresos", "caja_gastos", "volumen_ventas",
+        "atrapado_ventas", "volumen_compras", "atrapado_compras",
+        "stock_overdue_clientes", "stock_overdue_prov",
+        "n_tx", "n_fact_ventas", "n_fact_compras",
+    ]
+    for c in nonnegative:
+        if c not in df.columns:
+            continue
+        bad = df[c].notna() & (df[c] < 0)
+        if bad.any():
+            fail(f"{c}: {int(bad.sum())} valores negativos")
+        else:
+            ok(f"{c}: no negatividad")
+
+    # -------------------------------------------------------------------------
+    # Finitud numérica
+    # -------------------------------------------------------------------------
+    numeric = df.select_dtypes(include=[np.number]).columns
+    inf_cols = []
+    for c in numeric:
+        if np.isinf(df[c].to_numpy(dtype=float)).any():
+            inf_cols.append(c)
+    if inf_cols:
+        fail(f"Hay +/-inf en columnas: {inf_cols}")
+    else:
+        ok("No hay +/-inf en variables numéricas")
+
+    # -------------------------------------------------------------------------
+    # Rolling estricto
+    # -------------------------------------------------------------------------
+    strict_3m = [
+        "flujo_neto_3m_avg",
+        "clientes_morosos_3m_avg",
+        "impagos_prov_3m_avg",
+    ]
+    strict_6m = ["flujo_neto_6m_avg"]
+
+    for c in strict_3m:
+        if c not in df.columns:
+            continue
+        first = df.groupby("company_id")[c].nth(0)
+        second = df.groupby("company_id")[c].nth(1)
+        if first.notna().any() or second.notna().any():
+            fail(f"{c}: rolling 3m aparece antes de completar 3 meses")
+        else:
+            ok(f"{c}: rolling 3m estricto")
+
+    for c in strict_6m:
+        if c not in df.columns:
+            continue
+        first5 = df.groupby("company_id")[c].nth(list(range(5)))
+        if first5.notna().any():
+            fail(f"{c}: rolling 6m aparece antes de completar 6 meses")
+        else:
+            ok(f"{c}: rolling 6m estricto")
+
+    # -------------------------------------------------------------------------
+    # Disciplina de denominadores
+    # -------------------------------------------------------------------------
+    if "volumen_ventas" in df:
+        bad = (df["volumen_ventas"] == 0) & df["pct_clientes_morosos"].notna()
+        if bad.any():
+            fail("pct_clientes_morosos no es NA cuando volumen_ventas == 0")
+        else:
+            ok("Morosidad de clientes respeta denominador")
+
+    if "volumen_compras" in df:
+        bad = (df["volumen_compras"] == 0) & df["pct_impagos_prov"].notna()
+        if bad.any():
+            fail("pct_impagos_prov no es NA cuando volumen_compras == 0")
+        else:
+            ok("Morosidad de proveedores respeta denominador")
+
+    # -------------------------------------------------------------------------
+    # Snapshot financiero: jamás backfilled
+    # -------------------------------------------------------------------------
+    ultimo_mes = max(m for m in cfg.MONTHS if m not in set(cfg.PARTIAL_MONTHS))
+    snap = (
+        df["caja_reportada"].eq(1)
+        | df["deuda_viva"].notna()
+    )
+    fuera = snap & (df["year_month"] != ultimo_mes)
+    if fuera.any():
+        fail(
+            f"Snapshot financiero propagado fuera de {ultimo_mes}: "
+            f"{int(fuera.sum())} filas"
+        )
+    else:
+        ok(f"Caja/deuda solo aparecen en el último mes completo ({ultimo_mes})")
+
+    bad_caja = df["caja_reportada"].isin([0, 1]) == False
+    if bad_caja.any():
+        fail("caja_reportada contiene valores distintos de 0/1")
+    else:
+        ok("caja_reportada es binaria")
+
+    bad_semantics = (
+        df["caja_reportada"].eq(1) & df["caja_real"].isna()
+    ) | (
+        df["caja_reportada"].eq(0) & df["caja_real"].notna()
+    )
+    if bad_semantics.any():
+        fail("caja_reportada no coincide con la disponibilidad de caja_real")
+    else:
+        ok("Semántica caja_reportada/caja_real consistente")
+
+    # -------------------------------------------------------------------------
+    # Parcial y evidencia
+    # -------------------------------------------------------------------------
+    partial_flag = df["year_month"].isin(cfg.PARTIAL_MONTHS).astype(int)
+    if not np.array_equal(partial_flag.to_numpy(), df["mes_parcial"].to_numpy()):
+        fail("mes_parcial no coincide con cfg.PARTIAL_MONTHS")
+    else:
+        ok("mes_parcial coincide con configuración")
+
+    if "peso_cubierto" in df.columns:
+        bad = df["peso_cubierto"].notna() & (
+            (df["peso_cubierto"] < 0) | (df["peso_cubierto"] > 1)
+        )
+        if bad.any():
+            fail("peso_cubierto fuera de [0,1]")
+        else:
+            ok("peso_cubierto en [0,1]")
+
+    if "meses_activos_acum" in df.columns:
+        bad = df["meses_activos_acum"] < 0
+        if bad.any():
+            fail("meses_activos_acum negativo")
+        else:
+            ok("meses_activos_acum válido")
+
+    low_share = float((df["confianza"] == "baja").mean())
+    if low_share > 0.30:
+        warn(f"Confianza baja en {low_share:.1%} de las filas (>30%)")
+    else:
+        ok(f"Confianza baja en {low_share:.1%} de las filas")
+
+    if "snapshot_financiero_disponible" in df.columns:
+        bad = (
+            df["snapshot_financiero_disponible"].eq(1)
+            & (df["year_month"] != ultimo_mes)
+        )
+        if bad.any():
+            fail("snapshot_financiero_disponible activo fuera del último mes completo")
+        else:
+            ok("snapshot_financiero_disponible no se backfillea")
+
+    # -------------------------------------------------------------------------
+    # IDs
+    # -------------------------------------------------------------------------
+    if df["company_id"].isna().any():
+        fail("Hay company_id nulos")
+    else:
+        ok("No hay company_id nulos")
+
+    print("\n=== RESUMEN VALIDACIÓN ===")
+    print(f"Filas: {len(df):,}")
     print(f"Empresas: {df['company_id'].nunique():,}")
-    print(f"Filas: {len(df):,}   Columnas: {df.shape[1]}")
-    print(f"Meses por empresa: {counts.min()}–{counts.max()}")
+    print(f"Columnas: {df.shape[1]:,}")
     print(f"Errores: {ERRORES}")
 
     if cfg.AUDIT_PATH.exists():
-        print("\n=== AUDITORÍA DEL BUILD ===")
-        print(json.dumps(json.loads(cfg.AUDIT_PATH.read_text(encoding="utf-8")),
-                         indent=2, ensure_ascii=False))
+        audit = json.loads(cfg.AUDIT_PATH.read_text(encoding="utf-8"))
+        print("\n=== AUDITORÍA ===")
+        for k, v in audit.items():
+            print(f"{k}: {v}")
 
     if ERRORES:
-        raise SystemExit(1)
-    print("\nVALIDACIÓN COMPLETA: OK")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
