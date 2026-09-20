@@ -16,7 +16,7 @@ import src.brief_cliente as brief
 import src.config as cfg
 from src.build_dashboard import _walkforward_fc
 
-FRONTEND_DIR = Path(__file__).parent / "frontend"
+FRONTEND_DIR = Path(__file__).resolve().parents[3] / "frontend"
 
 _MIME_TYPES = {
     ".css": "text/css; charset=utf-8",

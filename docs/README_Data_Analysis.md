@@ -22,15 +22,17 @@ python -m src.brief_server    # http://127.0.0.1:8775/
 
 Hace falta el dataset del reto en `data/`. Las salidas van a `data/features/`. La calibración (`model/`) no se toca.
 
-| Artefacto | Grano |
-|---|---|
-| `master_panel.csv` | 1.286 empresas × 25 meses = 32.150 filas. Diccionario: [`FEATURES.md`](FEATURES.md) |
-| `scores_mensuales.csv` | empresa × mes. NaN si peso cubierto < 55% |
-| `scores_finales.csv` | 1 fila por empresa |
-| `scores_grupo.csv` | 249 grupos |
-| `score_explanations.json` | el “por qué” del último mes evaluable |
-| `anticipation_report.csv` | empresa × evento × señal |
-| `alerts.csv` | avisos (no dispara si ya estaba en zona la primera vez) |
-| `model/*.json` | percentiles y prior congelados |
+En el repo (y en Vercel) solo viajan `scores_finales.csv`, `scores_mensuales.csv` y `score_explanations.json`. El resto se genera en local al correr `python -m src.run`.
+
+| Artefacto | Grano | ¿Viaja? |
+|---|---|---|
+| `master_panel.csv` | 1.286 empresas × 25 meses = 32.150 filas. Diccionario: [`FEATURES.md`](FEATURES.md) | no |
+| `scores_mensuales.csv` | empresa × mes. NaN si peso cubierto < 55% | sí |
+| `scores_finales.csv` | 1 fila por empresa | sí |
+| `scores_grupo.csv` | 249 grupos | no |
+| `score_explanations.json` | el “por qué” del último mes evaluable | sí |
+| `anticipation_report.csv` | empresa × evento × señal | no |
+| `alerts.csv` | avisos (no dispara si ya estaba en zona la primera vez) | no |
+| `model/*.json` | percentiles y prior congelados | sí |
 
 Motor: [`SCORE_ENGINE.md`](SCORE_ENGINE.md). Moneda y suciedad: [`LIMPIEZA.md`](LIMPIEZA.md).

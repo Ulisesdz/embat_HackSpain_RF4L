@@ -4,13 +4,13 @@
 data/*
 !data/features/
 
-# Panel, logs y CSVs de calibración. El HTML ya embebe la cartera.
+# Panel interno y CSVs de calibración. Solo viajan los tres artefactos de score.
 data/features/*
 !data/features/scores_finales.csv
 !data/features/scores_mensuales.csv
 !data/features/score_explanations.json
 
-# Prototipo React viejo y dependencias
+# Dependencias y prototipo React viejo (no es la UI actual)
 node_modules/
 src/features/client-health-score/
 

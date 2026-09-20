@@ -37,6 +37,10 @@ export function trendLabel(value: string): string {
   return TREND_LABEL[value] ?? value;
 }
 
+export function trendDetail(_data: HealthScoreSummary): string {
+  return "Media 3 meses del eje Trayectoria";
+}
+
 export function signed(value: number | null | undefined, digits = 1): string {
   if (value == null || Number.isNaN(value)) return "—";
   const abs = Math.abs(value).toFixed(digits);

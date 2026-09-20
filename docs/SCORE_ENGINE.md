@@ -22,7 +22,7 @@ Calibración en `model/` (`pctl_reference.json`, `prior_contraccion.json`). Borr
 
 ```
 pip install -r requirements.txt
-python -m src.run          # features → validador → score → anticipación → monitor → dashboard
+python -m src.run          # features → validador → score → anticipación → monitor → copia la UI a dashboard/
 python -m src.brief_server # http://127.0.0.1:8775/
 ```
 

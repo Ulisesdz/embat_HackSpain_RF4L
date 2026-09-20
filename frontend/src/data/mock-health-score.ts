@@ -1,5 +1,6 @@
 import type { ExecutiveSummary, HealthScoreSummary } from "../types.js";
 
+/** Placeholder de COMP_0725 mientras llega el API. Cifras reales, no inventadas. */
 export const mockHealthScore: HealthScoreSummary = {
   companyId: "COMP_0725",
   period: "2026-08",

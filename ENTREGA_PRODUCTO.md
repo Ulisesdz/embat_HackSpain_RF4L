@@ -1,42 +1,29 @@
 # Qué se entrega
 
-Producto encima de un score de tesorería explicable. El comprador es Embat; quien firma es riesgo / tesorería del cliente.
+Health Score de tesorería, explicable, sobre 1.286 empresas.
 
-## Cómo se ve
+**Demo:** [https://embat-hack-spain-rf-4-l.vercel.app/](https://embat-hack-spain-rf-4-l.vercel.app/)
 
-```bash
-pip install -r requirements.txt
-python -m src.brief_server
-```
-
-http://127.0.0.1:8775/ — ficha Health Score (selector de empresa, desglose, curva).
-**Cómo se calcula** es la receta. Gemini redacta el párrafo si hay key.
+En local: `pip install -r requirements.txt` y `python -m src.brief_server` → http://127.0.0.1:8775/
 
 ## Dónde está cada cosa del reto
 
 | Lo que pide el track | Dónde |
 |---|---|
 | Puntuar empresas nunca vistas | `model/pctl_reference.json` + `model/prior_contraccion.json` |
-| Señal en las dos direcciones | `tendencia` MEJORANDO / DETERIORANDO (eje Trayectoria, no el Δ del 76) |
-| Trayectoria, no foto | Media exponencial 25 meses + eje 18% |
-| Explicación | `score_explanations.json`, `motivo_cambio_*`, seis ejes en la ficha |
-| Lista accionable | 420 llamadas (giro estando sana) + bache vs caída |
-| Anticipación medida | `anticipation_report.csv` |
-| Monitor | `data/features/alerts.csv` · pestaña Avisos |
-| Demo | `dashboard/` (UI Health Score; Vercel publica esa carpeta) |
-| Agente | Plan local (catálogo + RAG). Gemini solo redacta |
+| Señal en las dos direcciones | `tendencia` MEJORANDO / DETERIORANDO (eje Trayectoria) |
+| Trayectoria, no foto | Media exponencial + eje 18% |
+| Explicación | `score_explanations.json` y los seis ejes en la ficha |
+| Quién se tuerce estando sana | Giro en la ficha (bache vs caída estructural) |
+| Demo | [Vercel](https://embat-hack-spain-rf-4-l.vercel.app/) · `dashboard/` |
+| Agente | Catálogo + RAG. Gemini solo redacta |
 
-## Salidas del motor
-
-Viven en `data/features/` (regenerables; el dataset crudo no viaja en el repo).
+## Scores que viajan en el repo
 
 | Archivo | Grano |
 |---|---|
-| `scores_finales.csv` | 1 fila por empresa |
-| `scores_mensuales.csv` | empresa × mes |
-| `scores_grupo.csv` | 249 grupos |
-| `score_explanations.json` | el “por qué” de cada ficha |
-| `anticipation_report.csv` | empresa × evento |
-| `alerts.csv` | avisos del monitor |
+| `data/features/scores_finales.csv` | 1 fila por empresa |
+| `data/features/scores_mensuales.csv` | empresa × mes (curva) |
+| `data/features/score_explanations.json` | el “por qué” de cada ficha |
 
-Cómo se calcula: [`docs/SCORE_ENGINE.md`](docs/SCORE_ENGINE.md). Cómo se lee: [`README.md`](README.md).
+El crudo no viaja. Cómo se calcula: [`docs/SCORE_ENGINE.md`](docs/SCORE_ENGINE.md). Cómo se usa: [`README.md`](README.md).

@@ -2,7 +2,7 @@ const AXIS_BLURBS = {
   deuda_comercial: "Pagos a proveedores sobre vencimientos. El componente de mayor peso.",
   liquidez: "Flujo operativo del trimestre relativo a ingresos.",
   colchon: "Meses de gasto cubiertos. La volatilidad del flujo reduce la nota.",
-  trayectoria: "Dirección del score en los últimos meses, no el nivel puntual.",
+  trayectoria: "Dirección de flujo y deuda a 3 meses. No es el cambio del Health Score.",
   eficiencia: "Gasto por euro ingresado. 1,0 es el punto de equilibrio.",
   cobro_clientes: "Cobro sobre vencimientos. Pesa menos que proveedores: parte del riesgo es de contraparte.",
 };
@@ -112,6 +112,9 @@ const esc = (value) =>
 const classLabel = (value) => CLASS_LABEL[value] ?? value;
 const classThreshold = (value) => CLASS_THRESHOLD[value] ?? "";
 const trendLabel = (value) => TREND_LABEL[value] ?? value;
+function trendDetail(_data) {
+  return "Media 3 meses del eje Trayectoria";
+}
 
 function signed(value, digits = 1) {
   if (value == null || Number.isNaN(value)) return "—";
@@ -283,7 +286,7 @@ function renderMethodology(metrics) {
     </section>
     <section class="method-principles">
       <article class="card"><span>Nivel</span><strong>Clasificación</strong><p>Umbrales fijos: saludable, estable, en riesgo, frágil, crítico.</p></article>
-      <article class="card"><span>Dirección</span><strong>Tendencia</strong><p>Variación frente al mes anterior. Independiente del nivel.</p></article>
+      <article class="card"><span>Dirección</span><strong>Tendencia</strong><p>Media de 3 meses del eje Trayectoria. Independiente del 76: una empresa sana puede ir a peor.</p></article>
       <article class="card"><span>Giro</span><strong>Desviación propia</strong><p>Comparación con el historial de la misma empresa, no con el resto.</p></article>
       <article class="card"><span>Cobertura</span><strong>Dato ausente</strong><p>El componente no entra en el cálculo. La confianza del score baja.</p></article>
       <article class="card"><span>Proyección</span><strong>+3 meses</strong><p>Pendiente Theil-Sen del histórico. La banda es el p80 del error walk-forward.</p></article>
@@ -312,7 +315,7 @@ function renderDiagnosis(data, executive) {
           <article>
             <span>Tendencia</span>
             <strong class="${toneClass("trend", data)}">${esc(trendLabel(data.trend))}</strong>
-            <small>${esc(signed(data.delta))} vs mes anterior</small>
+            <small>${esc(trendDetail(data))}</small>
           </article>
           <article>
             <span>Confianza</span>

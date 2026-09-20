@@ -8,6 +8,7 @@ import {
   giroTitle,
   signed,
   splitWhy,
+  trendDetail,
   trendLabel,
 } from "../data/diagnosis.js";
 import type {
@@ -167,7 +168,7 @@ function renderDiagnosis(
           <article>
             <span>Tendencia</span>
             <strong class="${toneClass("trend", data)}">${esc(trendLabel(data.trend))}</strong>
-            <small>${esc(signed(data.delta))} vs mes anterior</small>
+            <small>${esc(trendDetail(data))}</small>
           </article>
           <article>
             <span>Confianza</span>

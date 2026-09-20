@@ -3,7 +3,7 @@
     python -m src.brief_server
     http://127.0.0.1:8775/
 
-La UI es src/features/client_health_score/frontend (también en dashboard/ para Vercel).
+La UI es frontend/ (también en dashboard/ para Vercel).
 El motor, el RAG y el catálogo siguen en src/.
 """
 from __future__ import annotations
@@ -152,8 +152,7 @@ def main():
     ui = frontend_asset("/")
     if not ui:
         raise SystemExit(
-            "Falta la UI en src/features/client_health_score/frontend. "
-            "python -m src.build_dashboard"
+            "Falta la UI en frontend/. python -m src.build_dashboard"
         )
     httpd = None
     port = PORT

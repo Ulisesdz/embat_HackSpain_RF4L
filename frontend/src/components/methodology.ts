@@ -40,7 +40,7 @@ export function renderMethodology(metrics: SupportingMetric[]): string {
       <article class="card">
         <span>Dirección</span>
         <strong>Tendencia</strong>
-        <p>Variación frente al mes anterior. Independiente del nivel.</p>
+        <p>Media de 3 meses del eje Trayectoria. Independiente del 76: una empresa sana puede ir a peor.</p>
       </article>
       <article class="card">
         <span>Giro</span>

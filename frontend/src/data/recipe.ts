@@ -2,7 +2,7 @@ export const AXIS_BLURBS: Record<string, string> = {
   deuda_comercial: "Pagos a proveedores sobre vencimientos. El componente de mayor peso.",
   liquidez: "Flujo operativo del trimestre relativo a ingresos.",
   colchon: "Meses de gasto cubiertos. La volatilidad del flujo reduce la nota.",
-  trayectoria: "Dirección del score en los últimos meses, no el nivel puntual.",
+  trayectoria: "Dirección de flujo y deuda a 3 meses. No es el cambio del Health Score.",
   eficiencia: "Gasto por euro ingresado. 1,0 es el punto de equilibrio.",
   cobro_clientes: "Cobro sobre vencimientos. Pesa menos que proveedores: parte del riesgo es de contraparte.",
 };
