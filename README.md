@@ -93,7 +93,9 @@ El grupo es **vista**, no segundo cálculo. 74 de 249 holdings esconden una fili
 
 ## Regenerar (opcional)
 
-Hace falta el dataset del reto en `data/` (está en `.gitignore`).
+Hace falta el dataset crudo en `data/` (sigue fuera de git).
+`scores_finales.csv` y `score_explanations.json` sí viajan: con ellos
+`python -m src.brief_server` y un deploy estático+API funcionan sin el RAW.
 
 ```bash
 python -m src.run

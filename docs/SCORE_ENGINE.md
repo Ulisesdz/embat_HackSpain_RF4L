@@ -195,4 +195,4 @@ Todo es escala-libre. No hay umbral en euros.
 
 Flujo operativo: cuentas de tesorería. Fuera: `card`, `transfer`, inversión y categorías de deuda (esas van a `debt_service`).
 
----S
+---
