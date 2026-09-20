@@ -1,0 +1,18 @@
+{
+  "framework": null,
+  "outputDirectory": "dashboard",
+  "functions": {
+    "api/health-score.py": {
+      "maxDuration": 30,
+      "includeFiles": "{src/**,data/features/**,api/_shared.py,api/__init__.py}"
+    },
+    "api/health-score/companies.py": {
+      "maxDuration": 15,
+      "includeFiles": "{src/**,data/features/**,api/_shared.py,api/__init__.py}"
+    },
+    "api/health-score/summary.py": {
+      "maxDuration": 30,
+      "includeFiles": "{src/**,data/features/**,api/_shared.py,api/__init__.py}"
+    }
+  }
+}

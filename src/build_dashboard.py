@@ -1,5 +1,6 @@
-"""Dashboard de producto: un HTML, sin servidor. Formato ficha + curva + bloques."""
+"""Publica la UI del Health Score en dashboard/ y helpers de proyección."""
 import json
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -260,11 +261,26 @@ def payload():
 
 
 def build():
-    data = payload()
-    html = TEMPLATE.replace("__DATA__", json.dumps(data, ensure_ascii=False, separators=(",", ":")))
-    cfg.DASHBOARD_PATH.parent.mkdir(parents=True, exist_ok=True)
-    cfg.DASHBOARD_PATH.write_text(html, encoding="utf-8")
-    print(f"Dashboard: {cfg.DASHBOARD_PATH} ({cfg.DASHBOARD_PATH.stat().st_size/1e6:.1f} MB)")
+    """Copia la UI del Health Score a dashboard/ (lo que se publica en Vercel)."""
+    from shutil import copy2, copytree
+
+    src = Path(__file__).resolve().parent / "features" / "client_health_score" / "frontend"
+    dest = cfg.DASHBOARD_PATH.parent
+    if not (src / "index.html").is_file():
+        raise SystemExit(f"Falta la UI en {src}")
+    dest.mkdir(parents=True, exist_ok=True)
+    copy2(src / "index.html", dest / "index.html")
+    copy2(src / "embat.css", dest / "embat.css")
+    if (src / "styles.css").is_file():
+        copy2(src / "styles.css", dest / "styles.css")
+    assets_src = src / "assets"
+    assets_dest = dest / "assets"
+    if assets_dest.exists():
+        for old in assets_dest.iterdir():
+            if old.is_file():
+                old.unlink()
+    copytree(assets_src, assets_dest, dirs_exist_ok=True)
+    print(f"Dashboard: {dest / 'index.html'} (UI Health Score)")
 
 
 TEMPLATE = r"""<!DOCTYPE html>

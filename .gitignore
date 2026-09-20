@@ -7,11 +7,12 @@ data/*
 # Panel, logs y CSVs de calibración. El HTML ya embebe la cartera.
 data/features/*
 !data/features/scores_finales.csv
+!data/features/scores_mensuales.csv
 !data/features/score_explanations.json
 
-# Prototipos / dependencias que no se entregan
+# Prototipo React viejo y dependencias
 node_modules/
-src/features/
+src/features/client-health-score/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

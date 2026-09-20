@@ -1,0 +1,13 @@
+{
+  "name": "embat-client-health-score",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "esbuild src/app.ts --bundle --format=esm --target=es2022 --outfile=assets/app.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "typescript": "^5.8.0"
+  }
+}

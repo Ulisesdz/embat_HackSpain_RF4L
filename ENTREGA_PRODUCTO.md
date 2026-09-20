@@ -9,7 +9,8 @@ pip install -r requirements.txt
 python -m src.brief_server
 ```
 
-http://127.0.0.1:8775/ — pestaña **Métricas** para la receta; **Ficha** para señalar los seis ejes.
+http://127.0.0.1:8775/ — ficha Health Score (selector de empresa, desglose, curva).
+**Cómo se calcula** es la receta. Gemini redacta el párrafo si hay key.
 
 ## Dónde está cada cosa del reto
 
@@ -22,7 +23,7 @@ http://127.0.0.1:8775/ — pestaña **Métricas** para la receta; **Ficha** para
 | Lista accionable | 420 llamadas (giro estando sana) + bache vs caída |
 | Anticipación medida | `anticipation_report.csv` |
 | Monitor | `data/features/alerts.csv` · pestaña Avisos |
-| Demo | `dashboard/index.html` |
+| Demo | `dashboard/` (UI Health Score; Vercel publica esa carpeta) |
 | Agente | Plan local (catálogo + RAG). Gemini solo redacta |
 
 ## Salidas del motor

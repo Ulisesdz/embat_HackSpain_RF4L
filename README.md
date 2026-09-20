@@ -4,8 +4,9 @@ Nota de tesorería **0–100** sobre 1.286 empresas y 25 meses. Lee banco, factu
 
 ```
 src/          motor, pipeline, servidor y agente
-model/        percentiles y prior congelados (viajan con el sistema)
-dashboard/    demo (un HTML, datos embebidos)
+src/features/client_health_score/   UI (frontend + adaptador de API)
+model/        percentiles y prior congelados
+dashboard/    copia de la UI para Vercel
 docs/         motor, diccionario, limpieza, corpus del agente
 ```
 
@@ -22,18 +23,15 @@ python -m src.brief_server
 
 Abre **http://127.0.0.1:8775/** (si está ocupado, el servidor prueba hasta 8784).
 
-| Pestaña | Para qué |
-|---|---|
-| **Cartera** | Las seis preguntas del reto: quién está sano, quién mejora, quién se tuerce, bache vs caída |
-| **Ficha** | Score, seis ejes, curva y plan de acciones |
-| **Avisos** | Monitor (3.050 avisos, con antirrebote) |
-| **Grupos** | Vista de holding. El cálculo sigue siendo por empresa |
-| **Métricas** | Cómo se llega al número (guion de demo) |
-| **TellMe** | Agente con Gemini. Pega una key de [aistudio.google.com](https://aistudio.google.com) (`AIza…` o `AQ.…`) |
+La ficha carga el score real (`/api/health-score`). El selector cambia de empresa.
+**Cómo se calcula** es la receta de los seis ejes. **Generar con IA** pide a Gemini
+un párrafo con esas señales; pega una key de [aistudio.google.com](https://aistudio.google.com)
+o deja `GEMINI_API_KEY` en el entorno. Sin key, el diagnóstico numérico sigue ahí.
 
-Sin key, la ficha sigue funcionando: el plan sale del catálogo + RAG (`docs/TEORIA_PYME.md`). Gemini solo redacta. No toca el score.
+Si tocas el TypeScript: `cd src/features/client_health_score/frontend && npm install && npm run build`
+y luego `python -m src.build_dashboard` (copia la UI a `dashboard/`).
 
-`dashboard/index.html` ya está generado. Si falta: `python -m src.build_dashboard` (hace falta `data/features/`).
+Publicar: [`docs/DEPLOY.md`](docs/DEPLOY.md).
 
 ---
 
@@ -57,7 +55,7 @@ Tres etiquetas en la ficha, y no son lo mismo:
 | **Dirección** | Media de 3 meses del eje Trayectoria. >58 MEJORANDO, <42 DETERIORANDO | No es el cambio del 76. Por eso puede poner **SALUDABLE + DETERIORANDO** |
 | **Giro** | Se torció contra su propia historia | **Bache** = suele rebotar. **Caída** = se sostiene |
 
-Detalle técnico: [`docs/SCORE_ENGINE.md`](docs/SCORE_ENGINE.md). En la UI: pestaña **Métricas**.
+Detalle técnico: [`docs/SCORE_ENGINE.md`](docs/SCORE_ENGINE.md). En la UI: **Cómo se calcula**.
 
 ---
 
@@ -94,8 +92,8 @@ El grupo es **vista**, no segundo cálculo. 74 de 249 holdings esconden una fili
 ## Regenerar (opcional)
 
 Hace falta el dataset crudo en `data/` (sigue fuera de git).
-`scores_finales.csv` y `score_explanations.json` sí viajan: con ellos
-`python -m src.brief_server` y un deploy estático+API funcionan sin el RAW.
+`scores_finales.csv`, `scores_mensuales.csv` y `score_explanations.json` sí
+viajan: con ellos `python -m src.brief_server` funciona sin el RAW.
 
 ```bash
 python -m src.run
