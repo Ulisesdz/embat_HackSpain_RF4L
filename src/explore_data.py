@@ -5,9 +5,8 @@ sesgos que los datos no permiten corregir. Genera data_quality_report.txt.
 """
 
 import pandas as pd
-import numpy as np
 
-import data_analysis.config as cfg
+import src.config as cfg
 
 LINEAS = []
 
@@ -38,7 +37,7 @@ def auditar_fechas(df, col, nombre):
     n_despues = int((validas > cfg.END_DATE).sum())
     n_dentro = len(validas) - n_antes - n_despues
 
-    log(f"--- {nombre} · columna '{col}' ---")
+    log(f"--- {nombre} Â· columna '{col}' ---")
     log(f"  Filas originales:           {n0:>9,}")
     log(f"  No parseables (NaT):        {n_nat:>9,}  ({n_nat/max(n0,1)*100:5.2f}%)")
     if n_nat:
@@ -107,7 +106,26 @@ def auditar_facturas(inv):
         log(f"    Valores reconocidos por el mapeo: {sorted(reconocidos) or 'NINGUNO → fallback por signo'}")
     else:
         log("  Dirección: NO HAY COLUMNA → fallback por signo del importe.")
-        log("    Las rectificativas de venta se contarán como compras. Limitación documentada.")
+        log("    Riesgo: si el signo es la convención real (+venta/-compra), el fallback")
+        log("    puede ser CORRECTO. Verificar con el desglose de document_type/concept.")
+
+    col_doc = cfg.detectar(inv, "document_kind")
+    log("--- DOCUMENT_TYPE / CONCEPT (para separar rectificativas de dirección) ---")
+    if col_doc:
+        vals_doc = inv[col_doc].astype(str).str.strip().str.lower()
+        log(f"  Columna '{col_doc}': {dict(vals_doc.value_counts().head(10))}")
+        reconocidos_doc = set(vals_doc.unique()) & cfg.VALORES_RECTIFICATIVA
+        log(f"    Valores reconocidos como rectificativa: {sorted(reconocidos_doc) or 'NINGUNO'}")
+    else:
+        log("  Sin columna de tipo de documento.")
+    if "concept" in inv.columns:
+        log(f"  'concept' (top 10, orientativo): "
+            f"{dict(inv['concept'].astype(str).str.lower().value_counts().head(10))}")
+    a_neg = pd.to_numeric(inv["amount"], errors="coerce") < 0
+    log(f"  amount < 0: {int(a_neg.sum()):,} ({a_neg.mean()*100:.1f}%)  â† si document_type no")
+    log(f"    confirma que esto son rectificativas, NO se debe llamar así en el pipeline;")
+    log(f"    lo más probable es que sea la convención de signo de la dirección.")
+    log()
 
     if col_pago:
         log(f"  Fecha de pago: '{col_pago}' → estado overdue reconstruible as-of por mes.")
@@ -129,6 +147,33 @@ def auditar_facturas(inv):
         log(f"  Filas con |pending| > |amount|: {int((p.abs() > a.abs() + 1e-6).sum()):,}")
     log()
 
+    auditar_multidivisa(inv, "INVOICES")
+
+
+# =============================================================================
+# MULTIDIVISA
+# =============================================================================
+
+def auditar_multidivisa(df, nombre):
+    if "currency" not in df.columns:
+        return
+    log(f"--- MULTIDIVISA ({nombre}) ---")
+    log(f"  currency: {dict(df['currency'].value_counts())}")
+    if "accounting_currency" in df.columns:
+        log(f"  accounting_currency: {dict(df['accounting_currency'].value_counts())}")
+        distinto = (df["currency"].astype(str) != df["accounting_currency"].astype(str))
+        log(f"  Filas con currency != accounting_currency: {int(distinto.sum()):,} "
+            f"({distinto.mean()*100:.2f}%)")
+        if distinto.any() and "exchange_rate" in df.columns:
+            er = pd.to_numeric(df.loc[distinto, "exchange_rate"], errors="coerce")
+            log(f"    exchange_rate en esas filas: nulo={int(er.isna().sum())}, "
+                f"rango=[{er.min():.4f}, {er.max():.4f}]")
+            log("    Si accounting_currency es homogénea, se puede normalizar con")
+            log("    amount * exchange_rate antes de sumar entre empresas.")
+        elif distinto.any():
+            log("    AVISO: hay divisas mixtas y no hay exchange_rate para convertir.")
+    log()
+
 
 # =============================================================================
 # BALANCES Y DEUDA
@@ -147,10 +192,22 @@ def auditar_balances(bal, banking):
     log(f"  Filas por product_id: mediana={por_producto.median():.0f} "
         f"máx={por_producto.max():.0f}")
     if por_producto.max() > 1:
-        log("  SERIE TEMPORAL: sumar sin filtrar multiplica la caja por el nº de snapshots.")
+        log("  SERIE TEMPORAL: sumar sin filtrar multiplica la caja por el nÂº de snapshots.")
         log(f"    Columna de fecha: {col_fecha or 'NINGUNA → no se puede desambiguar'}")
     else:
         log("  Snapshot único por producto: la suma directa es válida.")
+
+    for extra_col in ("available", "countable", "liquidity"):
+        if extra_col in bal.columns:
+            s = bal[extra_col]
+            if s.dtype == bool or set(s.dropna().unique()) <= {0, 1, True, False}:
+                log(f"  '{extra_col}': {dict(s.value_counts(dropna=False))}")
+            else:
+                diff = pd.to_numeric(s, errors="coerce") - pd.to_numeric(bal["balance"], errors="coerce")
+                log(f"  '{extra_col}' vs 'balance': diferencia media {diff.mean():,.2f}, "
+                    f"máx abs {diff.abs().max():,.2f}")
+                log("    Si difieren, 'available' puede ser el saldo realmente disponible")
+                log("    (descontando retenciones), más fiel para runway que 'balance'.")
 
     if banking is not None and "type" in banking.columns:
         tipos = banking["type"].value_counts()
@@ -174,8 +231,76 @@ def auditar_deuda(debt):
     log("  El signo RAW no se interpreta como riesgo: el pipeline usa la magnitud.")
     if "granted" in debt.columns:
         g = pd.to_numeric(debt["granted"], errors="coerce").fillna(0)
-        log(f"  Productos con granted = 0: {int((g == 0).sum()):,} de {len(debt):,}")
-        log("    Por eso se descarta el ratio de utilización y se usa deuda/ingresos.")
+        log(f"  Productos con granted = 0 (global): {int((g == 0).sum()):,} de {len(debt):,} "
+            f"({(g == 0).mean()*100:.1f}%)")
+        col_tipo = cfg.detectar(debt, "debt_type")
+        if col_tipo:
+            log(f"  Desglose de granted=0 por '{col_tipo}' "
+                f"(la cifra global puede esconder que un solo tipo concentre los ceros):")
+            tabla = (pd.DataFrame({"tipo": debt[col_tipo], "granted_cero": (g == 0)})
+                    .groupby("tipo")["granted_cero"].agg(["sum", "count"]))
+            for tipo, fila in tabla.iterrows():
+                log(f"    {tipo}: {int(fila['sum'])}/{int(fila['count'])} "
+                    f"({fila['sum']/fila['count']*100:.1f}%) con granted=0")
+    auditar_multidivisa(debt, "DEBT_PRODUCTS")
+    log()
+
+
+# =============================================================================
+# SUCIEDAD QUE NO ES "COLUMNA VACÍA"
+# =============================================================================
+
+def auditar_suciedad(tx, inv, companies, bal):
+    log("=" * 74)
+    log("SUCIEDAD: FECHAS, CEROS, TIPOS DE CAMBIO, ETIQUETAS")
+    log("=" * 74)
+
+    if tx is not None:
+        dt = pd.to_datetime(tx["date"], errors="coerce")
+        if "value_date" in tx.columns:
+            vd = pd.to_datetime(tx["value_date"], errors="coerce")
+            log(f"  transactions.date:        {dt.min()} → {dt.max()}")
+            log(f"  transactions.value_date:  {vd.min()} → {vd.max()}")
+            log(f"    value_date en año â‰¥ 2030 o < 2020: "
+                f"{int(((vd.dt.year < 2020) | (vd.dt.year >= 2030)).sum()):,}")
+            log("    El pipeline usa `date` (contable), no value_date.")
+        if "status" in tx.columns:
+            log(f"  transactions.status: {dict(tx['status'].astype(str).value_counts(dropna=False))}")
+        if "accounting_status" in tx.columns:
+            log(f"  accounting_status DISCARDED: "
+                f"{int(tx['accounting_status'].astype(str).eq('DISCARDED').sum()):,} "
+                f"(se CONSERVAN: es etiqueta de conciliación, no movimiento falso)")
+        a = pd.to_numeric(tx["amount"], errors="coerce")
+        log(f"  transactions amount==0: {int((a == 0).sum()):,}")
+        if "exchange_rate" in tx.columns:
+            er = pd.to_numeric(tx["exchange_rate"], errors="coerce")
+            log(f"  tx exchange_rate == 1: {int((er == 1).sum()):,} / {len(tx):,}")
+            log(f"  tx exchange_rate fuera de [{cfg.EXCHANGE_RATE_MIN}, {cfg.EXCHANGE_RATE_MAX}]: "
+                f"{int((er.notna() & ~er.between(cfg.EXCHANGE_RATE_MIN, cfg.EXCHANGE_RATE_MAX)).sum()):,}")
+            log("  POLÍTICA: no convertir transacciones a EUR. amount ya está en")
+            log("  moneda de la cuenta; en no-EUR el tipo es 1 en la mayoría.")
+
+    if inv is not None:
+        due = pd.to_datetime(inv["due_date"], errors="coerce")
+        pay = pd.to_datetime(inv["payment_date"], errors="coerce")
+        log(f"  invoices.due_date rango: {due.min()} → {due.max()}")
+        log(f"    vencimientos año â‰¤ 2005 o â‰¥ 2040: "
+            f"{int(((due.dt.year <= 2005) | (due.dt.year >= 2040)).sum()):,}")
+        log(f"  invoices.payment_date rango: {pay.min()} → {pay.max()}")
+        log("    (se reparan: due imposible → emisión+30d; cobro futuro/previo se recorta)")
+
+    if companies is not None and "country" in companies.columns:
+        raw = companies["country"].astype(str).str.strip().str.upper()
+        log(f"  companies.country nulo: {int(companies['country'].isna().mean()*100)}%")
+        log(f"  companies.country valores: {dict(raw.value_counts().head(15))}")
+        log("    Variantes ESPAÑA/ESPANYA/SPAIN -> ES. No entra al score.")
+        if "currency" in companies.columns:
+            log(f"  companies.currency: {dict(companies['currency'].value_counts())}")
+
+    if bal is not None:
+        vacias = [c for c in bal.columns if bal[c].isna().mean() >= 0.99]
+        log(f"  balances columnas â‰¥99% nulas: {vacias or 'ninguna'}")
+        log("    `available` está 100% vacío: no se usa. El runway usa `balance`.")
     log()
 
 
@@ -186,7 +311,7 @@ def auditar_deuda(debt):
 def main():
     cfg.asegurar_dirs()
     log("=" * 74)
-    log("INFORME DE CALIDAD DE DATOS · EMBAT X-RAY")
+    log("INFORME DE CALIDAD DE DATOS Â· EMBAT X-RAY")
     log(f"Ventana declarada: {cfg.START_DATE.date()} → {cfg.END_DATE.date()}")
     log(f"Buckets mensuales inclusivos: {len(cfg.MONTHS)}")
     log(f"Mes parcial (extracción {cfg.EXTRACTION_DATE.date()}): "
@@ -202,6 +327,7 @@ def main():
         auditar_facturas(inv)
     auditar_balances(leer("balances.csv"), leer("banking_products.csv"))
     auditar_deuda(leer("debt_products.csv"))
+    auditar_suciedad(tx, inv, leer("companies.csv"), leer("balances.csv"))
 
     log("=" * 74)
     log("SESGOS CONOCIDOS")

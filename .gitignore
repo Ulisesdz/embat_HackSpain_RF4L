@@ -1,5 +1,18 @@
-# Data folders
-data/
+# Dataset crudo del reto (invoices/transactions son cientos de MB). No viaja.
+# data/* ignora el contenido, no la carpeta: así se pueden des-ignorar
+# las salidas que sí hacen falta para brief_server y Vercel.
+data/*
+!data/features/
+
+# Panel, logs y CSVs de calibración. El HTML ya embebe la cartera.
+data/features/*
+!data/features/scores_finales.csv
+!data/features/scores_mensuales.csv
+!data/features/score_explanations.json
+
+# Prototipo React viejo y dependencias
+node_modules/
+src/features/client-health-score/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -219,5 +232,3 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
-data/
-*.csv

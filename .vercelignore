@@ -1,0 +1,7 @@
+**/__pycache__
+**/*.pyc
+src/features/client-health-score
+node_modules
+.venv
+venv
+.env
