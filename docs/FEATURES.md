@@ -1,12 +1,11 @@
 # Diccionario de Features · `master_panel.csv`
 
-Referencia de las columnas del panel maestro: qué mide cada una, con qué fórmula
-se calcula, qué cobertura real tiene sobre el dataset y para qué sirve en el motor
-de scoring.
+Qué mide cada columna del panel, con qué fórmula y qué cobertura tiene.
+El producto y el score se explican en [`../README.md`](../README.md) y [`SCORE_ENGINE.md`](SCORE_ENGINE.md).
 
-Versión final: **69 columnas**. Flujo = tesorería operativa.
+**69 columnas**. Flujo = tesorería operativa.
 `refund_rate` y `debt_service` son moduladores. `observado` es la máscara de
-ventana. **Producto lee las ~25 de `ENTREGA_PRODUCTO.md` §7.**
+ventana.
 
 - **Grano:** una fila por `company_id` × `year_month`. 1.286 empresas × 25 meses = 32.150 filas exactas.
 - **Ventana:** 2024-09 → 2026-09. El último bucket (2026-09) es parcial y queda fuera del score.

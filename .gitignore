@@ -1,5 +1,9 @@
-# Data folders
+# Dataset del reto y salidas regenerables (el dashboard ya embebe lo necesario)
 data/
+
+# Prototipos / dependencias que no se entregan
+node_modules/
+src/features/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

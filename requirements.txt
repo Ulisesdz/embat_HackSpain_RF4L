@@ -1,3 +1,9 @@
-pandas>=2.0
-numpy>=1.24
+# HackSpain 2026 · Embat / X-Ray
+# Python 3.10 o superior. Desde la raíz del repo:
+#   pip install -r requirements.txt
+
+pandas>=2.2,<3
+numpy>=1.26,<3
+
+# Solo para el agente (TellMe)
 google-genai>=2.3.0

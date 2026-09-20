@@ -272,61 +272,68 @@ TEMPLATE = r"""<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Embat X-Ray · Private Markets</title>
+<title>Embat · Health Score</title>
 <style>
 :root{
-  --ink:#17211f;--muted:#687571;--paper:#f3f4ef;--surface:#fff;--line:#dde2dc;
-  --forest:#143f38;--forest2:#215b4f;--lime:#cff56f;--green:#2e7965;--greenSoft:#e2eee9;
-  --blue:#3d6d7d;--blueSoft:#e2edf1;--red:#be4938;--redSoft:#f7e7e3;
-  --amber:#a76a16;--amberSoft:#f6e9d4;--radius:14px;
+  --ink:#050b2c;--muted:#6b7288;--paper:#fff;--surface:#fff;--line:#eceef2;
+  --forest:#050b2c;--forest2:#121a42;--lime:#3d6bff;--green:#1f8a6e;--greenSoft:#e5f4ef;
+  --blue:#3d6bff;--blueSoft:#e8eeff;--red:#e07a4a;--redSoft:#fdeee6;
+  --amber:#c47a1a;--amberSoft:#f6ead4;--radius:12px;
 }
 *{box-sizing:border-box}
-body{margin:0;background:var(--paper);color:var(--ink);
-  font:13px/1.45 Inter,ui-sans-serif,-apple-system,"Segoe UI",sans-serif}
+body{margin:0;background:#f3f5f9;color:var(--ink);
+  font:14px/1.5 Inter,Arial,Verdana,sans-serif}
 button,input,select{font:inherit}button{cursor:pointer}
-h1,h2,h3,p{margin-top:0}h1{font-size:24px;letter-spacing:-.04em}
-h2{font-size:17px;letter-spacing:-.025em}h3{font-size:13px}
-.app{min-height:100vh;display:grid;grid-template-columns:226px minmax(0,1fr)}
-.sidebar{height:100vh;position:sticky;top:0;background:var(--forest);color:#fff;padding:21px 14px;display:flex;flex-direction:column}
-.brand{display:flex;align-items:center;gap:10px;padding:0 9px 25px;font-weight:780;font-size:16px;letter-spacing:-.03em}
-.brandmark{width:31px;height:31px;border:1px solid rgba(255,255,255,.4);border-radius:50%;display:grid;place-items:center;color:var(--lime)}
-.brand small{display:block;color:rgba(255,255,255,.48);font-size:8px;letter-spacing:.11em;text-transform:uppercase;margin-top:2px}
-.nav-label{margin:14px 10px 7px;color:rgba(255,255,255,.45);font-size:9px;font-weight:760;letter-spacing:.13em;text-transform:uppercase}
-.nav{border:0;width:100%;padding:10px;border-radius:9px;background:transparent;color:rgba(255,255,255,.68);display:flex;align-items:center;gap:10px;text-align:left}
-.nav svg{width:17px;height:17px;flex-shrink:0}.nav:hover,.nav.active{background:rgba(255,255,255,.1);color:#fff}
-.nav .count{margin-left:auto;background:rgba(255,255,255,.12);border-radius:8px;padding:2px 6px;font-size:9px}
-.side-user{margin-top:auto;border-top:1px solid rgba(255,255,255,.13);padding:15px 8px 0;display:flex;gap:9px;align-items:center}
-.avatar{width:31px;height:31px;border-radius:50%;background:var(--lime);color:var(--forest);font-weight:800;display:grid;place-items:center;font-size:10px}
-.side-user small{display:block;color:rgba(255,255,255,.5);margin-top:2px}
-.main{min-width:0;padding:20px 26px 80px}
-.topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:22px}
-.eyebrow{margin:0 0 5px;color:var(--muted);font-size:9px;font-weight:760;letter-spacing:.11em;text-transform:uppercase}
-.top-actions{display:flex;gap:7px;align-items:center}
-.view{display:none}.view.active{display:block}
-.card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:17px}
-.btn,.select,.apikey{border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink);padding:8px 11px;font-weight:670}
-.apikey{min-width:240px}.key-status{font-size:10px;color:var(--muted);max-width:160px;line-height:1.3}
+h1,h2,h3,p{margin-top:0}h1{font-size:28px;font-weight:560;letter-spacing:-.04em}
+h2{font-size:18px;font-weight:560;letter-spacing:-.03em}h3{font-size:13px;font-weight:560}
+.app{min-height:100vh}
+.site-header{position:sticky;top:0;z-index:40;background:rgba(255,255,255,.88);backdrop-filter:saturate(160%) blur(18px);border-bottom:1px solid transparent;transition:box-shadow .25s,border-color .25s}
+.site-header.scrolled{border-bottom-color:var(--line);box-shadow:0 10px 30px rgba(5,11,44,.07)}
+.header-inner{max-width:1280px;margin:0 auto;height:72px;padding:0 28px;display:flex;align-items:center;gap:22px}
+.brand{display:flex;align-items:center;gap:10px;color:var(--ink);text-decoration:none;flex-shrink:0}
+.wordmark{height:20px;width:auto;display:block;color:var(--ink)}
+.brand-tag{font-size:12px;color:var(--muted);border-left:1px solid var(--line);padding-left:10px;letter-spacing:.01em}
+.menu{display:flex;align-items:center;gap:2px;flex:1;min-width:0}
+.nav{border:0;background:transparent;color:#3a4158;padding:8px 13px;border-radius:999px;font-weight:560;display:inline-flex;align-items:center;gap:6px;transition:color .2s,background .2s}
+.nav:hover{color:var(--ink);background:#f3f5f9}
+.nav.active{color:var(--ink);background:#eef1f8}
+.nav .count{background:var(--blueSoft);color:var(--blue);border-radius:999px;padding:1px 7px;font-size:10px;font-weight:700}
+.header-actions{display:flex;align-items:center;gap:8px;margin-left:auto}
+.main{max-width:1280px;margin:0 auto;padding:28px 28px 72px}
+.page-head{margin-bottom:20px}
+.page-head h1{font-size:32px;margin:0}
+.eyebrow{margin:0 0 4px;color:var(--muted);font-size:12px;font-weight:500}
+.view{display:none}.view.active{display:block;animation:rise .38s ease}
+@keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+.card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:20px;box-shadow:0 8px 24px rgba(5,11,44,.04);transition:transform .2s,box-shadow .2s}
+.card:hover{transform:translateY(-2px);box-shadow:0 16px 36px rgba(5,11,44,.08)}
+.table-card:hover,.list:hover{transform:none}
+.btn,.select,.apikey{border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--ink);padding:9px 16px;font-weight:560}
+.apikey{min-width:168px;height:38px;border-radius:999px;padding:0 14px;font-size:12px}.key-status{font-size:11px;color:var(--muted);white-space:nowrap}
 .btn.needs-key{opacity:.7}
-.btn:hover{border-color:#aab5ad}.btn-primary{background:var(--forest);border-color:var(--forest);color:#fff}
-.btn-lime{background:var(--lime);border-color:var(--lime);color:var(--forest)}.btn.ghost{background:#fff}
-.pill{display:inline-flex;align-items:center;padding:4px 7px;border-radius:999px;font-size:9px;font-weight:760}
+.btn:hover{border-color:#c5cad6}.btn-primary{background:var(--ink);border-color:var(--ink);color:#fff}
+.btn-lime{background:var(--blue);border-color:var(--blue);color:#fff}.btn-lime:hover{filter:brightness(1.06)}.btn.ghost{background:#fff}
+.pill{display:inline-flex;align-items:center;padding:5px 10px;border-radius:999px;font-size:11px;font-weight:700}
 .SALUDABLE,.pill-good{background:var(--greenSoft);color:var(--green)}
 .ESTABLE,.pill-blue{background:var(--blueSoft);color:var(--blue)}
 .EN-RIESGO,.pill-warn{background:var(--amberSoft);color:#7b4a0e}
 .FRAGIL,.CRITICO,.pill-bad{background:var(--redSoft);color:#8b3024}
-.NO-EVALUABLE,.pill-ghost{border:1px dashed #acb6ae;color:var(--muted);background:#fafbf8}
+.NO-EVALUABLE,.pill-ghost{border:1px dashed #c5cad6;color:var(--muted);background:#f6f7f9}
 .MEJORANDO,.up{color:var(--green);font-weight:750}.DETERIORANDO,.down{color:var(--red);font-weight:750}
-.search-hero{background:var(--forest);color:#fff;border-radius:18px;padding:30px;margin-bottom:16px;position:relative;overflow:hidden}
-.search-hero:after{content:"";position:absolute;width:230px;height:230px;border:1px solid rgba(207,245,111,.27);border-radius:50%;right:-60px;top:-80px}
-.search-hero h1{font-size:31px;margin:0 0 8px}.search-hero p{color:rgba(255,255,255,.65);max-width:650px;line-height:1.5;margin-bottom:20px}
-.searchbox{position:relative;z-index:2;display:flex;max-width:840px;background:#fff;border-radius:12px;padding:6px}
+.search-hero{background:linear-gradient(135deg,#050b2c 0%,#0c1440 58%,#1a2a6c 100%);color:#fff;border-radius:20px;padding:40px 40px 34px;margin-bottom:18px;position:relative;overflow:hidden}
+.search-hero:before{content:"";position:absolute;width:340px;height:340px;right:-90px;top:-140px;border-radius:50%;background:radial-gradient(circle,rgba(61,107,255,.38),transparent 68%);animation:orb 9s ease-in-out infinite;pointer-events:none}
+.search-hero:after{content:"";position:absolute;width:180px;height:180px;left:-50px;bottom:-70px;border-radius:50%;background:radial-gradient(circle,rgba(31,138,110,.22),transparent 70%);animation:orb 11s ease-in-out infinite reverse;pointer-events:none}
+@keyframes orb{0%,100%{transform:translate(0,0)}50%{transform:translate(-16px,14px)}}
+.search-hero h1{font-size:36px;font-weight:500;margin:0 0 10px}.search-hero p{color:rgba(255,255,255,.62);max-width:650px;line-height:1.5;margin-bottom:22px}
+.searchbox{position:relative;z-index:2;display:flex;max-width:840px;background:#fff;border-radius:10px;padding:6px}
 .searchbox input{flex:1;border:0;outline:0;min-width:0;color:var(--ink);padding:8px 10px}
 .prompt-chips{display:flex;gap:7px;flex-wrap:wrap;margin-top:13px;position:relative;z-index:2}
-.chip{border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.07);color:rgba(255,255,255,.78);border-radius:999px;padding:6px 9px;font-size:10px}
-.chip:hover,.chip.on{background:rgba(255,255,255,.13);color:#fff}
-.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:11px;margin-bottom:16px}
-.stat{min-height:104px}.stat-head{display:flex;justify-content:space-between;color:var(--muted);font-size:10px}
-.stat-value{font-size:24px;font-weight:780;letter-spacing:-.04em;margin:17px 0 4px}.stat small{color:var(--muted)}
+.chip{border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:rgba(255,255,255,.78);border-radius:999px;padding:7px 12px;font-size:11px;transition:background .2s,transform .2s,color .2s}
+.chip:hover,.chip.on{background:rgba(255,255,255,.16);color:#fff;transform:translateY(-1px)}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+.stat{min-height:118px;overflow:hidden;position:relative}.stat:before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--stat,var(--blue))}
+.stat-head{display:flex;justify-content:space-between;color:var(--muted);font-size:12px}
+.stat-value{font-size:32px;font-weight:740;letter-spacing:-.05em;margin:14px 0 6px}.stat small{color:var(--muted)}
 .workspace{display:grid;grid-template-columns:230px minmax(0,1fr);gap:14px}
 .filters{padding:15px}.filter-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
 .filter-head h2{font-size:14px;margin:0}.linkbtn{border:0;background:none;color:var(--green);font-size:10px;font-weight:700;padding:0}
@@ -341,51 +348,59 @@ input[type=range]{width:100%;accent-color:var(--forest)}
 .results-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:10px}
 .results-head h2{margin:0}.results-head p{color:var(--muted);font-size:10px;margin:4px 0 0}
 .table-card{padding:0;overflow:hidden}.table-wrap{overflow:auto}
-table{width:100%;border-collapse:collapse}th{text-align:left;padding:10px 12px;color:var(--muted);font-size:8px;letter-spacing:.09em;text-transform:uppercase;background:#fafbf8;border-bottom:1px solid var(--line)}
-td{padding:12px;border-bottom:1px solid var(--line);font-size:13px}
-tbody tr.click,tbody tr[data-id]{cursor:pointer}tbody tr:hover{background:#f6f8f4}
+table{width:100%;border-collapse:collapse}th{text-align:left;padding:11px 14px;color:var(--muted);font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:500;background:#f6f7f9;border-bottom:1px solid var(--line)}
+td{padding:13px 14px;border-bottom:1px solid var(--line);font-size:13px}
+tbody tr.click,tbody tr[data-id]{cursor:pointer}tbody tr:hover{background:#f7f8fb}
 .company-cell{display:flex;gap:10px;align-items:center}
-.logo,.profile-logo{width:34px;height:34px;border-radius:9px;background:var(--greenSoft);display:grid;place-items:center;color:var(--forest);font-weight:800}
+.logo,.profile-logo{width:34px;height:34px;border-radius:9px;background:var(--blueSoft);display:grid;place-items:center;color:var(--ink);font-weight:700}
 .company-cell strong{display:block}.company-cell small{color:var(--muted);display:block;margin-top:3px}
 .score{font-size:17px;font-weight:780}
+.score-cell{min-width:72px}.score-cell b{display:block;font-size:18px;font-weight:750}
+.score-cell .track,.mini-track{height:4px;background:#eef0f4;border-radius:99px;overflow:hidden;margin-top:6px}
+.score-cell .track i,.mini-track i{display:block;height:100%;border-radius:99px}
+.score-ring{width:120px;height:120px;display:block}
 .qnav{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin:4px 0 14px}
 .qnav a{background:#fff;border:1px solid var(--line);border-radius:10px;padding:9px 10px;color:var(--ink);text-decoration:none}
 .qnav a b{display:block;font-size:12px}.qnav a span{color:var(--muted);font-size:11px}
 .qpack{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0}
-.qcell{background:#fafbf8;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:13px}
+.qcell{background:#f6f7f9;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:13px}
 .qcell b{display:block;font-size:10px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:3px}
 .barseg{display:flex;height:16px;border-radius:8px;overflow:hidden;margin:8px 0}.barseg i{display:block;height:100%}
-svg.lg,.ch,.timeline{width:100%;height:240px;display:block}
+svg.lg,.ch{width:100%;height:320px;display:block}
+.timeline{width:100%;height:240px;display:block}
 .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:6px}
 .legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:middle}
-.grid2{display:grid;grid-template-columns:1.15fr .85fr;gap:12px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
 .layout{display:grid;grid-template-columns:280px 1fr;gap:14px}
 .list{background:#fff;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;max-height:78vh;display:flex;flex-direction:column}
 .list .rows{overflow:auto;flex:1}
 .list input{width:100%;border:0;border-bottom:1px solid var(--line);padding:10px 12px}
 .chips{display:flex;gap:6px;padding:8px 10px;flex-wrap:wrap;border-bottom:1px solid var(--line)}
-.chips button{background:#fafbf8;border:1px solid var(--line);color:var(--muted);border-radius:999px;padding:4px 10px;font-size:11px}
-.chips button.on{color:var(--forest);border-color:var(--forest);background:var(--greenSoft)}
+.chips button{background:#f6f7f9;border:1px solid var(--line);color:var(--muted);border-radius:999px;padding:4px 10px;font-size:11px}
+.chips button.on{color:var(--ink);border-color:var(--ink);background:var(--blueSoft)}
 .row{padding:9px 12px;border-bottom:1px solid var(--line);cursor:pointer;display:flex;justify-content:space-between;gap:8px}
-.row:hover,.row.on{background:#f6f8f4}.row small{color:var(--muted);display:block}
+.row:hover,.row.on{background:#f7f8fb}.row small{color:var(--muted);display:block}
 .profile-hero{margin-bottom:14px}.profile-title{display:flex;justify-content:space-between;gap:15px;flex-wrap:wrap}
 .profile-id{display:flex;gap:13px}.profile-logo{width:52px;height:52px;border-radius:13px;font-size:16px}
 .profile-actions{display:flex;gap:7px;align-items:flex-start;flex-wrap:wrap}
-.health-strip{display:grid;grid-template-columns:170px 1fr;gap:22px;align-items:center;margin-top:24px}
+.health-strip{display:grid;grid-template-columns:140px 1fr;gap:28px;align-items:center;margin-top:22px}
 .big-score{font-size:58px;line-height:.9;font-weight:790;letter-spacing:-.07em}
-.score-caption{color:var(--muted);margin-top:9px}.change{font-weight:760;margin-top:6px}
-.profile-summary h2{font-size:22px;margin-bottom:8px}.profile-summary p{color:var(--muted);line-height:1.55}
+.score-caption{color:var(--muted);margin-top:9px}.change{font-weight:700;margin-top:10px;font-size:14px}
+.profile-summary h2{font-size:26px;margin:12px 0 0;font-weight:560;letter-spacing:-.03em}.profile-summary p{display:none}
 .confidence{font-size:10px;color:var(--muted);margin-top:12px}.confidence strong{color:var(--ink)}
-.signals{display:grid;grid-template-columns:repeat(6,1fr);gap:9px;margin-bottom:14px}
-.signal{padding:13px}.signal-top{display:flex;justify-content:space-between;color:var(--muted);font-size:9px}
-.signal-score{font-size:22px;font-weight:780;margin:12px 0 3px}.signal small{color:var(--muted);display:block}
+.signals{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
+.signal{padding:20px 22px;min-height:128px}.signal-top{color:var(--muted);font-size:13px;font-weight:600}
+.signal-score{font-size:40px;font-weight:740;letter-spacing:-.05em;margin:12px 0 16px}.signal small{display:none}
+.signal .track{height:6px;background:rgba(5,11,44,.06);border-radius:99px;overflow:hidden}.signal .track i{display:block;height:100%;border-radius:99px}
 .card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:14px}
 .card-head h2{margin-bottom:4px}.card-head p{margin:0;color:var(--muted);font-size:10px}
-.brief{margin-top:12px;padding:14px;background:#fafbf8;border:1px dashed #b4beb6;border-radius:12px}
-.brief h2{font-size:15px}.note,.lede{color:var(--muted);font-size:12px}
-.acciones{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
-.accion{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px}
-.accion h3{margin:0 0 6px;font-size:13px}.accion p{margin:0;color:var(--muted);font-size:11px;line-height:1.45}
+.brief{margin-top:16px;padding:22px;background:#fff;border:1px solid var(--line);border-radius:16px}
+.brief h2{font-size:20px;margin-bottom:10px}.note{color:var(--muted);font-size:13px}
+.brief .lede{color:var(--ink);font-size:16px;line-height:1.5;margin:0 0 10px}
+.brief-tes{color:var(--muted);font-size:14px;line-height:1.5;margin:0 0 4px}
+.acciones{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px}
+.accion{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px}
+.accion h3{margin:0 0 6px;font-size:15px}.accion p{margin:0;color:var(--muted);font-size:13px;line-height:1.45}
 .accion .meta{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
 .quien-empresa{background:var(--greenSoft);color:var(--green)}
 .quien-embat{background:var(--blueSoft);color:var(--blue)}
@@ -396,51 +411,75 @@ svg.lg,.ch,.timeline{width:100%;height:240px;display:block}
 .teoria b{color:var(--ink);display:block;margin-bottom:4px}
 .scroll{max-height:62vh;overflow:auto}.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
 .kpi{font-size:26px;font-weight:750}.sub{color:var(--muted);font-size:12px}
-.disclosure{margin-top:15px;padding:10px 12px;border:1px dashed #b4beb6;background:#fafbf8;border-radius:10px;color:var(--muted);font-size:9px;line-height:1.5}
-.ai-button{position:fixed;right:22px;bottom:22px;border:0;border-radius:999px;padding:12px 16px;background:var(--forest);color:#fff;font-weight:730;z-index:15}
-.ai-button span{color:var(--lime);margin-right:6px}
-.ai-panel{position:fixed;right:20px;bottom:76px;width:min(440px,calc(100vw - 30px));height:560px;background:#fff;border:1px solid var(--line);border-radius:16px;z-index:16;display:none;flex-direction:column;overflow:hidden}
-.ai-panel.open{display:flex}.ai-head{padding:14px 15px;background:var(--forest);color:#fff;display:flex;justify-content:space-between}
+.disclosure{margin-top:15px;padding:10px 12px;border:1px solid var(--line);background:#f6f7f9;border-radius:10px;color:var(--muted);font-size:9px;line-height:1.5}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:16px 0 4px}
+.step{padding:18px 20px}.step b{display:block;font-size:12px;color:var(--blue);margin-bottom:8px}
+.step p{margin:0;color:var(--muted);font-size:14px;line-height:1.45}
+.metric-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.metric{padding:22px 24px;min-height:auto}
+.metric-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px}
+.metric h3{margin:0;font-size:18px}.metric-w{font-size:28px;font-weight:740;letter-spacing:-.04em}
+.metric .track{height:6px;background:#eef0f4;border-radius:99px;overflow:hidden;margin:0 0 14px}
+.metric p{margin:0 0 8px;color:var(--muted);font-size:14px;line-height:1.45}
+.metric p strong{color:var(--ink);font-weight:650}
+.hl{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.hl span{border-radius:999px;padding:5px 10px;font-size:12px;font-weight:600}
+.scale{display:flex;height:18px;border-radius:99px;overflow:hidden;margin:14px 0 10px}
+.scale i{display:block;height:100%}
+.scale-leg{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.trio{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.demo-say{background:var(--ink);color:#fff;padding:26px 28px;border-radius:16px;margin-bottom:14px}
+.demo-say h2{color:#fff;margin-bottom:8px}.demo-say p{margin:0;color:rgba(255,255,255,.78);font-size:16px;line-height:1.5;max-width:820px}
+.recipe{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:10px;align-items:stretch;margin-top:16px}
+.recipe .card{margin:0}.recipe-op{display:grid;place-items:center;font-size:22px;font-weight:700;color:var(--blue)}
+.pipe{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 0}
+.pipe span{background:#f3f5f9;border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:13px;font-weight:600}
+.ai-button{position:fixed;right:24px;bottom:24px;z-index:80;height:48px;padding:0 20px;border:0;border-radius:999px;background:var(--blue);color:#fff;font-weight:650;display:inline-flex;align-items:center;gap:8px;cursor:pointer;box-shadow:0 12px 28px rgba(61,107,255,.32);pointer-events:auto}
+.ai-button span{color:#fff;margin:0}
+.ai-panel{position:fixed;right:24px;top:84px;width:min(420px,calc(100vw - 30px));height:min(560px,calc(100vh - 110px));background:#fff;border:1px solid var(--line);border-radius:16px;z-index:70;display:none;flex-direction:column;overflow:hidden;box-shadow:0 18px 50px rgba(5,11,44,.16)}
+.ai-panel.open{display:flex}.ai-head{padding:14px 15px;background:var(--ink);color:#fff;display:flex;justify-content:space-between}
 .ai-head small{color:rgba(255,255,255,.55);display:block;margin-top:3px}
 .ai-close{border:0;background:rgba(255,255,255,.1);color:#fff;border-radius:50%;width:27px;height:27px}
-.messages{padding:15px;overflow:auto;flex:1;background:#f7f8f4}
+.messages{padding:15px;overflow:auto;flex:1;background:#f7f8fb}
 .message{max-width:92%;padding:10px 11px;border-radius:11px;margin-bottom:10px;line-height:1.5;font-size:11px}
-.assistant{background:#fff;border:1px solid var(--line)}.user{background:var(--greenSoft);margin-left:auto}
+.assistant{background:#fff;border:1px solid var(--line)}.user{background:var(--blueSoft);margin-left:auto}
 .suggestions{display:flex;gap:5px;flex-wrap:wrap;margin-top:9px}
 .suggestions button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 7px;font-size:9px}
 .ai-input{display:flex;padding:10px;border-top:1px solid var(--line);gap:7px}
 .ai-input input{flex:1;border:1px solid var(--line);border-radius:8px;padding:8px;min-width:0}
-.ai-input button{border:0;border-radius:8px;background:var(--forest);color:#fff;padding:8px 10px}
-.toast{position:fixed;right:22px;bottom:78px;background:var(--forest);color:#fff;padding:12px 14px;border-radius:10px;opacity:0;transform:translateY(70px);transition:.25s;z-index:25}
-.toast.show{opacity:1;transform:none}
+.ai-input button{border:0;border-radius:999px;background:var(--blue);color:#fff;padding:8px 14px}
+.toast{position:fixed;left:50%;bottom:28px;transform:translate(-50%,12px);background:var(--ink);color:#fff;padding:12px 16px;border-radius:10px;opacity:0;visibility:hidden;pointer-events:none;transition:.2s;z-index:90}
+.toast.show{opacity:1;visibility:visible;transform:translate(-50%,0)}
 svg circle[data-id]{cursor:pointer}
-@media(max-width:820px){.app{grid-template-columns:74px 1fr}.brand>div:last-child,.nav span,.nav-label,.side-user>div:last-child{display:none}.workspace,.layout,.profile-grid,.grid2,.qnav,.qpack,.signals,.stats{grid-template-columns:1fr 1fr}.filters{display:none}}
-@media(max-width:700px){.app{display:block}.sidebar{display:none}.main{padding:15px 12px}.stats,.signals,.health-strip,.acciones{grid-template-columns:1fr}}
+@media(max-width:980px){.brand-tag,.apikey,.key-status{display:none}.header-inner{padding:0 16px;gap:10px}.menu{overflow:auto}}
+@media(max-width:820px){.workspace,.layout,.profile-grid,.grid2,.qnav,.qpack,.signals,.stats{grid-template-columns:1fr 1fr}.filters{display:none}}
+@media(max-width:700px){.main{padding:16px 12px}.header-inner{height:64px}.stats,.signals,.health-strip,.acciones,.metric-grid,.steps,.trio,.recipe{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 <div class="app">
-<aside class="sidebar">
-  <div class="brand"><div class="brandmark">E</div><div>X-Ray<small>by Embat</small></div></div>
-  <div class="nav-label">Discover</div>
-  <button class="nav active" data-view="radar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="10.5" cy="10.5" r="6.5" stroke-width="1.5"/><path d="m16 16 5 5" stroke-width="1.5"/></svg><span>Cartera</span></button>
-  <button class="nav" data-view="empresa"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 7h16M4 12h16M4 17h10" stroke-width="1.5"/></svg><span>Ficha</span></button>
-  <div class="nav-label">Monitor</div>
-  <button class="nav" data-view="monitor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z" stroke-width="1.4"/></svg><span>Avisos</span><span class="count" id="nav-avisos">—</span></button>
-  <button class="nav" data-view="grupos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 4v16M19 4v16M5 8h14M5 16h14" stroke-width="1.5"/></svg><span>Grupos</span></button>
-  <div class="nav-label">Research</div>
-  <button class="nav" data-view="metodo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 5h16v12H8l-4 4z" stroke-width="1.5"/></svg><span>Método</span></button>
-    <button class="nav" id="nav-ai"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M8 10h8M8 13h5" stroke-width="1.4"/><path d="M4 5h16v12H8l-4 4z" stroke-width="1.5"/></svg><span>Agente pyme</span></button>
-  <div class="side-user"><div class="avatar">DF</div><div><strong>Deal team</strong><small>HackSpain · dataset anónimo</small></div></div>
-</aside>
-<main class="main">
-  <header class="topbar">
-    <div><p class="eyebrow">Private company intelligence</p><h1 id="pageTitle">Cartera · seis preguntas</h1></div>
-    <div class="top-actions">
-      <input id="llm-key" class="apikey" type="password" placeholder="API key Gemini (AI Studio)" autocomplete="off">
-      <span class="key-status" id="llm-key-status">Sin key: el LLM no se llama</span>
+<header class="site-header" id="siteHeader">
+  <div class="header-inner">
+    <a class="brand" href="#cartera" id="brandHome">
+      <svg class="wordmark" xmlns="http://www.w3.org/2000/svg" width="93" height="20" viewBox="0 0 93 20" fill="none" aria-label="Embat"><path fill="currentColor" fill-rule="evenodd" d="m0 3.82 4.49 6.178L11.754.001v19.996l7.264-9.999L11.754 0zm0 12.36L11.755 20 4.49 10zM29.866 2.352h10.687v2.337h-7.946v3.865h7.204v2.337h-7.204v4.396h8.027v2.337H29.866zm29.77 7.935v7.335h-2.68v-6.67c0-1.39-.745-2.298-1.994-2.298-1.633 0-2.62 1.492-2.62 4.07v4.897h-2.68v-6.67c0-1.39-.726-2.297-1.996-2.297-1.612 0-2.599 1.471-2.599 4.07v4.897h-2.68V6.458h2.68V7.97c.524-.886 1.814-1.672 3.366-1.672s2.861.766 3.426 2.076c.967-1.41 2.418-2.076 3.869-2.076 2.277 0 3.909 1.592 3.909 3.99Zm4.979 5.904v1.429h-2.68V3.275l2.68-.884v5.495c.685-.967 2.035-1.591 3.526-1.591 3.164 0 5.34 2.236 5.34 5.743s-2.176 5.744-5.38 5.744c-1.471 0-2.8-.624-3.486-1.59Zm6.167-4.154c0 2.056-1.27 3.446-3.084 3.446s-3.083-1.391-3.083-3.447 1.27-3.465 3.083-3.465 3.084 1.41 3.084 3.466m4.127 2.524c0-2.075 1.45-3.324 4.736-3.667l2.499-.282v-.221c0-1.27-.927-2.015-2.277-2.015s-2.237.725-2.378 1.974h-2.58c.283-2.337 2.278-4.05 4.958-4.05 2.881 0 4.937 1.572 4.937 4.393v6.932h-2.66v-1.471c-.523.988-1.854 1.633-3.365 1.633-2.399 0-3.87-1.27-3.87-3.225Zm4.333 1.17c1.713 0 2.902-1.17 2.902-3.144l-2.459.261c-1.431.161-2.096.746-2.096 1.612 0 .745.666 1.27 1.653 1.27Zm8.364-7.091v5.46c0 2.378 1.612 3.668 3.728 3.668.564 0 1.028-.102 1.491-.263V15.25c-.342.12-.785.221-1.128.221-.846 0-1.41-.564-1.41-1.612V8.64h2.398V6.463h-2.399V3.084l-2.68.884v2.495h-1.612V8.64z" clip-rule="evenodd"/></svg>
+      <span class="brand-tag">Health Score</span>
+    </a>
+    <nav class="menu" aria-label="Principal">
+      <button class="nav active" data-view="radar">Cartera</button>
+      <button class="nav" data-view="empresa">Ficha</button>
+      <button class="nav" data-view="monitor">Avisos <span class="count" id="nav-avisos">—</span></button>
+      <button class="nav" data-view="grupos">Grupos</button>
+      <button class="nav" data-view="metodo">Métricas</button>
+    </nav>
+    <div class="header-actions">
+      <input id="llm-key" class="apikey" type="password" placeholder="API key Gemini" autocomplete="off">
+      <span class="key-status" id="llm-key-status">Sin key</span>
+      <button type="button" class="btn btn-lime" id="btn-tellme">✦ TellMe</button>
     </div>
-  </header>
+  </div>
+</header>
+<main class="main">
+  <div class="page-head"><p class="eyebrow">Treasury</p><h1 id="pageTitle">Cartera · seis preguntas</h1></div>
   <section id="radar" class="view active"></section>
   <section id="empresa" class="view"></section>
   <section id="grupos" class="view"></section>
@@ -448,7 +487,6 @@ svg circle[data-id]{cursor:pointer}
   <section id="metodo" class="view"></section>
 </main>
 </div>
-<button class="ai-button" id="aiButton"><span>✦</span>Agente de la pyme</button>
 <aside class="ai-panel" id="aiPanel">
   <div class="ai-head"><div><strong>Agente con herramientas</strong><small>Ficha · RAG de teoría · catálogo de acciones. No recalcula.</small></div><button class="ai-close" id="aiClose">×</button></div>
   <div class="messages" id="messages">
@@ -465,15 +503,47 @@ svg circle[data-id]{cursor:pointer}
 <div class="toast" id="toast"></div>
 <script>
 const D = __DATA__;
-const COLOR = {SALUDABLE:'#2e7965',ESTABLE:'#3d6d7d','EN RIESGO':'#a76a16','FRAGIL':'#be4938','FRÁGIL':'#be4938','CRITICO':'#be4938','CRÍTICO':'#be4938'};
+const COLOR = {SALUDABLE:'#1f8a6e',ESTABLE:'#3d6bff','EN RIESGO':'#c47a1a','FRAGIL':'#e07a4a','FRÁGIL':'#e07a4a','CRITICO':'#e07a4a','CRÍTICO':'#e07a4a'};
 const slug = c => (c||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'-');
 const pill = c => `<span class="pill ${slug(c)}">${c||''}</span>`;
-const TITLES = {radar:'Cartera · seis preguntas', empresa:'Ficha de empresa', grupos:'Grupos', monitor:'Avisos', metodo:'Método'};
+function tone(s){
+  if(s==null) return '#9aa1b0';
+  if(s>=68) return '#1f8a6e';
+  if(s>=52) return '#3d6bff';
+  if(s>=42) return '#c47a1a';
+  return '#e07a4a';
+}
+function scoreRing(s){
+  const v=s==null?0:Math.max(0,Math.min(100,Number(s)));
+  const col=tone(s);
+  const r=46, c=2*Math.PI*r, off=c*(1-v/100);
+  const label=s==null?'—':Math.round(Number(s));
+  return `<svg class="score-ring" viewBox="0 0 120 120" aria-label="Health score ${label}">
+    <circle cx="60" cy="60" r="${r}" fill="none" stroke="#edf0f5" stroke-width="10"/>
+    <circle cx="60" cy="60" r="${r}" fill="none" stroke="${col}" stroke-width="10"
+      stroke-dasharray="${c.toFixed(2)}" stroke-dashoffset="${off.toFixed(2)}" stroke-linecap="round"
+      transform="rotate(-90 60 60)"/>
+    <text x="60" y="68" text-anchor="middle" font-size="28" font-weight="750" fill="${col}">${label}</text>
+  </svg>`;
+}
+function scoreBar(s){
+  const col=tone(s);
+  const w=s==null?0:Math.max(0,Math.min(100,Number(s)));
+  return `<div class="score-cell"><b style="color:${col}">${s==null?'—':Number(s).toFixed(0)}</b><div class="track"><i style="width:${w}%;background:${col}"></i></div></div>`;
+}
+function richer(llm, fallback){
+  const a=(llm||'').trim(), b=(fallback||'').trim();
+  if(a.length>=60) return a;
+  if(a && b && a!==b) return (a.replace(/[.]+$/,'')+'. '+b).trim();
+  return a||b;
+}
+const TITLES = {radar:'Cartera · seis preguntas', empresa:'Ficha de empresa', grupos:'Grupos', monitor:'Avisos', metodo:'Métricas del Health Score'};
 let CURRENT = D.kpis.featured || (D.companies[0]||{}).id;
 function show(tab){
   document.querySelectorAll('.view').forEach(s => s.classList.toggle('active', s.id===tab));
   document.querySelectorAll('.nav[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view===tab));
-  const t=document.getElementById('pageTitle'); if(t) t.textContent=TITLES[tab]||'X-Ray';
+  const t=document.getElementById('pageTitle'); if(t) t.textContent=TITLES[tab]||'Health Score';
+  const ph=document.querySelector('.page-head'); if(ph) ph.hidden = tab==='radar';
   window.scrollTo({top:0,behavior:'smooth'});
 }
 function toast(txt){
@@ -514,7 +584,7 @@ function chart(id){
     const los=[last.y, ...fc.lo];
     const his=[last.y, ...fc.hi];
     const band=xs2.map((x,i)=>X(x)+','+Y(his[i])).join(' ')+' '+[...xs2].reverse().map((x,i)=>X(x)+','+Y(los[los.length-1-i])).join(' ');
-    const col=fc.b>0.15?'#2e7965':fc.b<-0.15?'#be4938':'#687571';
+    const col=fc.b>0.15?'#1f8a6e':fc.b<-0.15?'#e07a4a':'#6b7288';
     const mid=ys2.map((y,i)=>(i?'L':'M')+X(xs2[i])+','+Y(y)).join(' ');
     ray=`<polygon points="${band}" fill="${col}" fill-opacity=".12" stroke="none"/>
       <path d="${mid}" fill="none" stroke="${col}" stroke-width="2" stroke-dasharray="6 4"/>
@@ -528,23 +598,20 @@ function chart(id){
       if(giros[i].x-giros[i-1].x>2) mark=giros[i];
     }
   }
-  const dots=mark?`<circle cx="${X(mark.x)}" cy="${Y(mark.y)}" r="5" fill="#be4938"/>
-    <text x="${X(mark.x)+8}" y="${Y(mark.y)-8}" fill="#be4938" font-size="10">giro</text>`:'';
+  const dots=mark?`<circle cx="${X(mark.x)}" cy="${Y(mark.y)}" r="5" fill="#e07a4a"/>
+    <text x="${X(mark.x)+8}" y="${Y(mark.y)-8}" fill="#e07a4a" font-size="10">giro</text>`:'';
   const ticks=pts.filter((_,i)=>i===0||i===pts.length-1||i===Math.floor(pts.length/2))
     .map(pt=>`<text x="${X(pt.x)}" y="${h-10}" fill="#687571" font-size="10">${pt.m}</text>`).join('');
   const last=pts[pts.length-1];
   const area=pts.length?`M${X(pts[0].x)},${Y(pts[0].y)} `+pts.slice(1).map(pt=>`L${X(pt.x)},${Y(pt.y)}`).join(' ')+` L${X(last.x)},${Y(ymin)} L${X(pts[0].x)},${Y(ymin)} Z`:'';
-  const cap=fc
-    ? `Línea = score mensual. El punto rojo es el giro vigente. Discontinuo = pendiente reciente a 3 meses, desde el último score real. MAE ${fc.mae??'—'} pts.`
-    : 'Línea = score mensual. Punto rojo = giro. Sin proyección: menos de 6 meses puntuados.';
   return `<svg class="timeline" viewBox="0 0 ${w} ${h}">
     ${grid}
-    ${(ymin<55 && ymax>55)?`<text x="${w-pr}" y="${Y(55)-5}" fill="#687571" font-size="10" text-anchor="end">55 · aún parece sana</text>`:''}
-    <path d="${area}" fill="rgba(46,121,101,.08)"/>
-    <path d="${d}" fill="none" stroke="#2e7965" stroke-width="3" stroke-linecap="round"/>
+    ${(ymin<55 && ymax>55)?`<text x="${w-pr}" y="${Y(55)-5}" fill="#687571" font-size="10" text-anchor="end">55</text>`:''}
+    <path d="${area}" fill="rgba(61,107,255,.08)"/>
+    <path d="${d}" fill="none" stroke="#3d6bff" stroke-width="3" stroke-linecap="round"/>
     ${ray}${dots}${ticks}
   </svg>
-  <p class="note">${cap}</p>`;
+  <div class="legend"><span><i style="background:#3d6bff"></i>score</span>${mark?'<span><i style="background:#e07a4a"></i>giro</span>':''}${fc?'<span><i style="background:#6b7288"></i>+3m</span>':''}</div>`;
 }
 
 function qpack(r){
@@ -568,38 +635,39 @@ function qpack(r){
 function barsClase(){
   const cl=D.kpis.clase||{}, n=D.kpis.n||1;
   const order=['SALUDABLE','ESTABLE','EN RIESGO','FRÁGIL','CRÍTICO','NO EVALUABLE'];
-  const cols={'SALUDABLE':'#2e7965','ESTABLE':'#3d6d7d','EN RIESGO':'#a76a16','FRÁGIL':'#be4938','FRAGIL':'#be4938','CRÍTICO':'#be4938','CRITICO':'#be4938','NO EVALUABLE':'#acb6ae'};
+  const cols={'SALUDABLE':'#1f8a6e','ESTABLE':'#3d6bff','EN RIESGO':'#c47a1a','FRÁGIL':'#e07a4a','FRAGIL':'#e07a4a','CRÍTICO':'#e07a4a','CRITICO':'#e07a4a','NO EVALUABLE':'#9aa1b0'};
   const keys=order.filter(k=>cl[k]!=null).concat(Object.keys(cl).filter(k=>!order.includes(k)));
   return `<div class="barseg">${keys.map(k=>`<i style="width:${100*cl[k]/n}%;background:${cols[k]||'#8b9bb4'}" title="${k} ${cl[k]}"></i>`).join('')}</div>
     <div class="legend">${keys.map(k=>`<span><i style="background:${cols[k]||'#888'}"></i>${k} ${cl[k]}</span>`).join('')}</div>`;
 }
 
 function scatter(){
-  const w=700,h=300,p=36;
+  const w=700,h=340,pl=48,pr=18,pt=22,pb=32;
   const pts=D.companies.filter(x=>x.s!=null && x.dir!=null);
-  const ys=pts.map(p=>p.dir);
-  const ymin=Math.min(-12,...ys), ymax=Math.max(12,...ys);
-  const X=x=>p+x/100*(w-2*p);
-  const Y=y=>h-p-(y-ymin)/(ymax-ymin||1)*(h-2*p);
+  const xs=pts.map(p=>p.s), ys=pts.map(p=>p.dir);
+  const xmin=Math.max(0, Math.min(...xs)-4);
+  const xmax=Math.min(100, Math.max(...xs)+4);
+  const ymin=Math.min(...ys)-2, ymax=Math.max(...ys)+2;
+  const X=x=>pl+(x-xmin)/(xmax-xmin||1)*(w-pl-pr);
+  const Y=y=>h-pb-(y-ymin)/(ymax-ymin||1)*(h-pt-pb);
   const dots=pts.map(c=>{
-    const col=c.giro&&c.s>=55?'#be4938':c.t==='MEJORANDO'?'#2e7965':c.t==='DETERIORANDO'?'#a76a16':'#3d6d7d';
-    return `<circle data-id="${c.id}" cx="${X(c.s)}" cy="${Y(c.dir)}" r="${c.giro&&c.s>=55?4.2:2.5}" fill="${col}" fill-opacity=".8"><title>${c.id} · ${c.s} · ${c.t} · ${c.dir} pts / 6m</title></circle>`;
+    const col=c.giro&&c.s>=55?'#e07a4a':c.t==='MEJORANDO'?'#1f8a6e':c.t==='DETERIORANDO'?'#c47a1a':'#3d6bff';
+    return `<circle data-id="${c.id}" cx="${X(c.s)}" cy="${Y(c.dir)}" r="${c.giro&&c.s>=55?4.2:2.6}" fill="${col}" fill-opacity=".85"><title>${c.id} · ${c.s} · ${c.t} · ${c.dir} pts / 6m</title></circle>`;
   }).join('');
   return `<svg class="lg" viewBox="0 0 ${w} ${h}">
-    <line x1="${X(55)}" x2="${X(55)}" y1="${p}" y2="${h-p}" stroke="#dde2dc" stroke-dasharray="4 4"/>
-    <line x1="${p}" x2="${w-p}" y1="${Y(0)}" y2="${Y(0)}" stroke="#dde2dc"/>
-    <text x="${X(55)+6}" y="${p+12}" fill="#687571" font-size="10">55 aún parece sana</text>
-    <text x="${w-p}" y="${h-8}" fill="#687571" font-size="10" text-anchor="end">score (quién está sano) →</text>
-    <text x="6" y="${p+8}" fill="#687571" font-size="10">mejora</text>
-    <text x="6" y="${h-p+4}" fill="#687571" font-size="10">empeora</text>
+    <line x1="${X(55)}" x2="${X(55)}" y1="${pt}" y2="${h-pb}" stroke="#dde2dc" stroke-dasharray="4 4"/>
+    <line x1="${pl}" x2="${w-pr}" y1="${Y(0)}" y2="${Y(0)}" stroke="#dde2dc"/>
+    <text x="${X(55)+6}" y="${pt+12}" fill="#687571" font-size="10">55</text>
+    <text x="${w-pr}" y="${h-10}" fill="#687571" font-size="10" text-anchor="end">score →</text>
+    <text x="8" y="${pt+8}" fill="#687571" font-size="10">mejora</text>
+    <text x="8" y="${h-pb+4}" fill="#687571" font-size="10">empeora</text>
     ${dots}</svg>
-    <div class="legend"><span><i style="background:#2e7965"></i>MEJORANDO</span><span><i style="background:#a76a16"></i>DETERIORANDO</span><span><i style="background:#3d6d7d"></i>ESTABLE</span><span><i style="background:#be4938"></i>giro y sigue sana</span></div>
-    <p class="note">Arriba-derecha: sólida y mejorando. Abajo-derecha: el caso 82→68. Arriba-izquierda: números mediocres hoy, mejor apuesta. No predice quiebras: lee nivel × dirección.</p>`;
+    <div class="legend"><span><i style="background:#1f8a6e"></i>Mejorando</span><span><i style="background:#c47a1a"></i>Deteriorando</span><span><i style="background:#3d6bff"></i>Estable</span><span><i style="background:#e07a4a"></i>Giro y sigue sana</span></div>`;
 }
 
 function flowsChart(){
   const F=D.flows; if(!F||!F.m) return '';
-  const w=700,h=220,p=28, n=F.m.length;
+  const w=700,h=340,p=32, n=F.m.length;
   const vals=[...F.MEJORANDO,...F.DETERIORANDO,...F.ESTABLE].filter(v=>v!=null);
   const ymin=Math.min(30,...vals), ymax=Math.max(80,...vals);
   const X=i=>p+i/Math.max(1,n-1)*(w-2*p);
@@ -610,11 +678,10 @@ function flowsChart(){
     return d?`<path d="${d}" fill="none" stroke="${col}" stroke-width="2"/>`:'';
   };
   const ticks=[0,Math.floor((n-1)/2),n-1].map(i=>`<text x="${X(i)}" y="${h-6}" fill="#687571" font-size="10">${(F.m[i]||'').slice(0,7)}</text>`).join('');
-  return `<svg class="lg" viewBox="0 0 ${w} ${h}" style="height:220px">
-    ${path(F.MEJORANDO,'#2e7965')}${path(F.ESTABLE,'#3d6d7d')}${path(F.DETERIORANDO,'#be4938')}
+  return `<svg class="lg" viewBox="0 0 ${w} ${h}">
+    ${path(F.MEJORANDO,'#1f8a6e')}${path(F.ESTABLE,'#3d6bff')}${path(F.DETERIORANDO,'#e07a4a')}
     ${ticks}</svg>
-    <div class="legend"><span><i style="background:#2e7965"></i>hoy MEJORANDO (n=${D.kpis.mej})</span><span><i style="background:#3d6d7d"></i>ESTABLE (${D.kpis.est})</span><span><i style="background:#be4938"></i>DETERIORANDO (${D.kpis.det})</span></div>
-    <p class="note">Mediana del score mensual de quienes <em>hoy</em> tienen cada etiqueta. Es trayectoria observada, no un pronóstico.</p>`;
+    <div class="legend"><span><i style="background:#1f8a6e"></i>Mejorando (${D.kpis.mej})</span><span><i style="background:#3d6bff"></i>Estable (${D.kpis.est})</span><span><i style="background:#e07a4a"></i>Deteriorando (${D.kpis.det})</span></div>`;
 }
 
 const ACCION={
@@ -691,30 +758,27 @@ function htmlAcciones(b){
       <h3>${esc(a.titulo)}</h3>
       <div class="meta">
         <span class="pill quien-${esc(a.quien)}">${esc(a.quien)}</span>
-        ${eje?`<span class="pill pill-ghost">${esc(eje)}${i.eje_hoy!=null?' · hoy '+i.eje_hoy:''}</span>`:''}
+        ${eje?`<span class="pill pill-ghost">${esc(eje)}</span>`:''}
       </div>
       <p>${esc(a.hace)}</p>
-      <p style="margin-top:6px">${esc(i.lectura||a.no_hace||'Sin promesa de puntos.')}</p>
     </article>`;
   }).join('')}</div>`;
 }
 function htmlBrief(b){
   const ws=b.vista==='fondo';
-  const teor=(b.teoria||[]).slice(0,2);
+  if(ws){
+    return `<div class="brief" id="brief-out">
+      <h2>Vista fondo</h2>
+      <p class="lede">${esc(b.workspace||b.situacion||'')}</p>
+      <button type="button" class="btn ghost" id="btn-copy-brief">Copiar</button>
+    </div>`;
+  }
   return `<div class="brief" id="brief-out">
-    <h2>${ws?'Lo que vería el fondo':'Para la pyme'}</h2>
-    ${ws?`<p>${esc(b.workspace||'')}</p>`:`
-    <div class="qpack">
-      <div class="qcell"><b>Qué está pasando</b>${esc(b.situacion||'')}</div>
-      <div class="qcell"><b>Qué mirar en tesorería</b>${esc(b.tesoreria||'')}</div>
-      <div class="qcell"><b>Qué no afirmamos</b>${esc(b.limites||'')}</div>
-    </div>
+    <h2>Qué hacer</h2>
+    <p class="lede">${esc(b.situacion||'')}</p>
+    ${b.tesoreria?`<p class="brief-tes">${esc(b.tesoreria)}</p>`:''}
     ${htmlAcciones(b)}
-    ${teor.length?`<div class="teoria"><b>Teoría citada</b>${teor.map(t=>esc(t.id)+'. '+esc((t.texto||'').slice(0,220))).join('<br>')}</div>`:''}
-    <div class="tools-used">${(b.herramientas||[]).map(t=>`<span>${esc(t)}</span>`).join('')}</div>`}
-    <p class="note">${b.src==='agente'?'Agente: herramientas + LLM.':b.src==='sin-clave'?'No se ha llamado al LLM.':b.src&&String(b.src).includes('herramientas')?'Herramientas locales (sin LLM). Plan de acciones no llama al modelo.':'Plantilla + catálogo.'}
-      ${ws?'Resumen anónimo: score + porqué. Sin acciones.':'Las acciones son tipos del catálogo, no una oferta. Cero puntos prometidos.'}
-      ${b.aviso?esc(b.aviso):''}</p>
+    ${b.aviso?`<p class="note">${esc(b.aviso)}</p>`:''}
     <button type="button" class="btn ghost" id="btn-copy-brief">Copiar</button>
   </div>`;
 }
@@ -763,7 +827,8 @@ async function lanzarBrief(id, modo){
     return;
   }
   if(btn){ btn.disabled=true; btn.textContent=modo==='llm'?'Agente trabajando…':'Generando…'; }
-  let b=Object.assign({src:'plantilla', aviso:'', vista:modo==='fondo'?'fondo':'pyme'}, bloquesPyme(r));
+  const plantilla=bloquesPyme(r);
+  let b=Object.assign({src:'plantilla', aviso:'', vista:modo==='fondo'?'fondo':'pyme'}, plantilla);
   if(modo!=='fondo'){
     try{
       const res=await fetch('/api/brief',{
@@ -773,8 +838,8 @@ async function lanzarBrief(id, modo){
       });
       if(res.ok){
         const j=await res.json();
-        b.situacion=j.situacion||b.situacion;
-        b.tesoreria=j.tesoreria||b.tesoreria;
+        b.situacion=richer(j.situacion, plantilla.situacion);
+        b.tesoreria=richer(j.tesoreria, plantilla.tesoreria);
         b.limites=j.limites||b.limites;
         b.workspace=j.workspace||b.workspace;
         if(Array.isArray(j.acciones) && j.acciones.length) b.acciones=j.acciones;
@@ -787,7 +852,7 @@ async function lanzarBrief(id, modo){
         if(modo==='llm' && j.fuente!=='agente') toast((j.aviso&&j.aviso.indexOf('OpenAI')>=0)?'Servidor viejo: relanza python -m src.brief_server':(j.aviso||'Gemini no se usó'));
       } else if(modo==='llm') b.aviso='El servidor no respondió. python -m src.brief_server';
     }catch(e){
-      if(modo==='llm') b.aviso='Sin servidor. python -m src.brief_server y recarga http://127.0.0.1:8765/';
+      if(modo==='llm') b.aviso='Sin servidor. python -m src.brief_server y recarga http://127.0.0.1:8775/';
     }
   }
   pintarBrief(r, b);
@@ -801,7 +866,7 @@ function ejes(id){
   const e=D.explain[id]; if(!e) return '<p class="note">Sin explicacion.</p>';
   return `<div class="axes">${D.ejes.map(([k,nom,w])=>{
     const f=e.f[k]||{}; const s=f.s;
-    const col=s==null?'#acb6ae': s>=70?'#2e7965':s>=55?'#3d6d7d':s>=40?'#a76a16':'#be4938';
+    const col=s==null?'#9aa1b0': s>=70?'#1f8a6e':s>=55?'#3d6bff':s>=40?'#c47a1a':'#e07a4a';
     return `<div class="axis"><div class="nm">${nom} · ${w}%</div>
       <div class="sc" style="color:${col}">${s??'—'}</div>
       <div class="track"><i style="width:${s??0}%;background:${col}"></i></div>
@@ -828,25 +893,27 @@ function filasLista(sel, q){
   if(extra) list=[extra, ...list.filter(x=>x.id!==sel)];
   return list.slice(0,80).map(x=>`<div class="row ${x.id===sel?'on':''}" data-id="${x.id}" role="button">
     <div class="company-cell"><div class="logo">${logo(x.id)}</div><div><strong>${x.id}</strong><small>${x.g||'sin grupo'}</small></div></div>
-    <div style="text-align:right"><span class="score">${x.s??'—'}</span><br>${pill(x.c)}</div>
+    <div style="text-align:right;min-width:72px">${scoreBar(x.s)}${pill(x.c)}</div>
   </div>`).join('');
 }
 function titula(r){
-  if(r.s==null || r.c==='NO EVALUABLE') return 'Sin evidencia suficiente para puntuar';
-  if(r.giro && r.s>=55 && r.nat==='caida_estructural') return 'Se tuerce y aún parece sana · caída que se sostiene';
-  if(r.giro && r.s>=55) return 'Se tuerce y aún parece sana · bache de tesorería';
+  if(r.s==null || r.c==='NO EVALUABLE') return 'Aún no hay nota';
+  if(r.giro && r.s>=55 && r.nat==='caida_estructural') return 'Aún parece sana, pero la caída se sostiene';
+  if(r.giro && r.s>=55) return 'Aún parece sana, pero hay un bache';
   if(r.c==='SALUDABLE' && r.t==='MEJORANDO') return 'Sólida y mejorando';
-  if(r.c==='SALUDABLE') return 'Sólida, con la dirección que marca la etiqueta';
-  if(r.t==='DETERIORANDO') return 'El nivel todavía no grita; la dirección sí';
+  if(r.c==='SALUDABLE') return 'Sólida';
+  if(r.t==='DETERIORANDO') return 'La nota aguanta; la dirección no';
   return r.c+' · '+r.t;
 }
 function signalCards(id){
   const e=D.explain[id]||{f:{}};
   return `<div class="signals">${D.ejes.map(([k,nom])=>{
     const f=e.f[k]||{}; const s=f.s;
-    const arrow=s==null?'—':s>=70?'↑':s>=55?'→':'↓';
-    return `<article class="card signal"><div class="signal-top"><span>${nom}</span><span class="${s!=null&&s<55?'down':'up'}">${arrow}</span></div>
-      <div class="signal-score">${s??'—'}</div><small>${f.ok===false?'eje apagado':(f.r||'').slice(0,48)}</small></article>`;
+    const col=tone(s);
+    const bg=s==null?'#fff':s>=68?'#f3faf7':s>=52?'#f4f7ff':s>=42?'#fff8ee':'#fff5f0';
+    return `<article class="card signal" style="background:${bg};border-color:${col}33"><div class="signal-top"><span>${nom}</span></div>
+      <div class="signal-score" style="color:${col}">${s==null?'—':Number(s).toFixed(0)}</div>
+      <div class="track"><i style="width:${s??0}%;background:${col}"></i></div></article>`;
   }).join('')}</div>`;
 }
 function empresa(id, keepQ){
@@ -855,7 +922,6 @@ function empresa(id, keepQ){
   const q=keepQ? ((document.getElementById('q')||{}).value||'') : '';
   const boxWas=document.getElementById('q');
   const caret=boxWas? boxWas.selectionStart : q.length;
-  const d6=r.dir==null?'sin 6m':((r.dir>0?'+':'')+r.dir+' pts · 6 meses');
   document.getElementById('empresa').innerHTML=`
   <div class="layout">
     <div class="list">
@@ -874,39 +940,34 @@ function empresa(id, keepQ){
         <div class="profile-title">
           <div class="profile-id">
             <div class="profile-logo">${logo(r.id)}</div>
-            <div><p class="eyebrow">Private company profile</p>
+            <div>
               <h1>${r.id}</h1>
-              <div class="meta note">${r.g||'sin grupo'} · IDs del dataset, no hay sector ni país en el dato</div></div>
+              <div class="meta note">${r.g||'sin grupo'}</div>
+            </div>
           </div>
           <div class="profile-actions">
             <button type="button" class="btn" id="btn-brief">Plan de acciones</button>
-            <button type="button" class="btn ghost" id="btn-brief-llm">Agente + LLM</button>
-            <button type="button" class="btn btn-primary" id="btn-fondo">Qué vería el fondo</button>
+            <button type="button" class="btn btn-lime" id="btn-brief-llm">Agente + LLM</button>
+            <button type="button" class="btn ghost" id="btn-fondo">Fondo</button>
+            <button type="button" class="btn ghost" id="btn-metodo">Cómo se calcula</button>
           </div>
         </div>
         <div class="health-strip">
-          <div><div class="big-score">${r.s??'—'}</div>
-            <div class="score-caption">Financial Health Score</div>
-            <div class="change ${r.t}">${d6}${r.d!=null?' · Δ '+((r.d>0?'+':'')+r.d)+' último mes':''}</div></div>
-          <div class="profile-summary">${pill(r.c)} <span class="${r.t}">${r.t||''}</span>
-            ${r.giro?`<span class="pill ${r.nat==='caida_estructural'?'pill-bad':'pill-warn'}">${r.nat||'giro'}</span>`:''}
+          ${scoreRing(r.s)}
+          <div class="profile-summary">${pill(r.c)}
+            ${r.giro?`<span class="pill ${r.nat==='caida_estructural'?'pill-bad':'pill-warn'}">${r.nat==='caida_estructural'?'caída':'bache'}</span>`:''}
             <h2>${titula(r)}</h2>
-            <p>${r.mot||(D.explain[r.id]&&D.explain[r.id].mot)||'Sin cambio atribuible el último mes.'}</p>
-            <div class="confidence"><strong>${r.conf==='alta'?'Alta confianza':r.conf==='media'?'Confianza media':'Confianza baja'}</strong>
-              · último mes ${r.last??'—'} · ${r.giro&&r.sig!=null?r.sig+'σ en el giro':'sin giro marcado'}</div>
+            <div class="change ${r.t}">${r.t==='MEJORANDO'?'Mejorando':r.t==='DETERIORANDO'?'Se tuerce':'Estable'}${r.dir==null?'':(' · '+(r.dir>0?'+':'')+Number(r.dir).toFixed(1)+' pts / 6m')}</div>
           </div>
         </div>
       </article>
       ${signalCards(r.id)}
       <article class="card" style="margin-bottom:14px">
-        <div class="card-head"><div><h2>Financial momentum</h2><p>Score mensual · no es un pronóstico de quiebra</p></div>
-          ${r.giro?`<span class="pill pill-warn">giro ${r.nat||''}</span>`:'<span class="pill pill-ghost">sin giro</span>'}</div>
+        <div class="card-head"><div><h2>Evolución</h2></div>
+          ${r.giro?`<span class="pill pill-warn">${r.nat==='caida_estructural'?'caída':'bache'}</span>`:''}</div>
         ${chart(r.id)}
-        ${D.explain[r.id]&&D.explain[r.id].giro?`<p class="note">${D.explain[r.id].giro}</p>`:''}
-        ${qpack(r)}
         <div id="brief-slot">${BRIEF_ON[r.id]?htmlBrief(BRIEF_ON[r.id]):''}</div>
       </article>
-      <article class="card"><div class="card-head"><div><h2>Por qué este número</h2><p>Seis ejes. Si falta la fuente, el eje se apaga. Nunca se imputa 50.</p></div></div>${ejes(r.id)}</article>
     </div>
   </div>`;
   const box=document.getElementById('q');
@@ -924,6 +985,7 @@ function empresa(id, keepQ){
   document.getElementById('btn-brief-llm')?.addEventListener('click',()=>lanzarBrief(r.id, 'llm'));
   claveUI();
   document.getElementById('btn-fondo')?.addEventListener('click',()=>lanzarBrief(r.id, 'fondo'));
+  document.getElementById('btn-metodo')?.addEventListener('click',()=>show('metodo'));
   if(BRIEF_ON[r.id]) document.getElementById('btn-copy-brief')?.addEventListener('click',()=>{
     navigator.clipboard?.writeText(textoBrief(BRIEF_ON[r.id])); toast('Brief copiado');
   });
@@ -939,16 +1001,15 @@ function radar(){
   const top=D.companies.filter(x=>x.s!=null).sort((a,b)=>(b.s||0)-(a.s||0));
   const tableRows=(list)=>list.slice(0,12).map(r=>`<tr class="click" data-id="${r.id}">
     <td><div class="company-cell"><div class="logo">${logo(r.id)}</div><div><strong>${r.id}</strong><small>${r.g||'sin grupo'}</small></div></div></td>
-    <td><span class="score">${r.s??'—'}</span></td>
+    <td>${scoreBar(r.s)}</td>
     <td><span class="${r.t}">${r.t==='MEJORANDO'?'↑':r.t==='DETERIORANDO'?'↓':'→'} ${r.t||'—'}</span><br><small>${r.dir==null?'':((r.dir>0?'+':'')+r.dir+' pts / 6m')}</small></td>
     <td>${pill(r.c)}</td>
     <td>${r.giro&&r.s>=55?`<span class="pill ${r.nat==='caida_estructural'?'pill-bad':'pill-warn'}">${r.nat||'giro'}</span>`:(r.giro?'<span class="pill pill-ghost">giro ya no sano</span>':'<span class="pill pill-ghost">—</span>')}</td>
   </tr>`).join('');
   document.getElementById('radar').innerHTML=`
   <div class="search-hero">
-    <span class="pill pill-ghost" style="color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.25)">X-Ray · no es PitchBook de nombres</span>
     <h1>Busca empresas por comportamiento</h1>
-    <p>Health score, dirección y giro. IDs del dataset del reto: no hay sector, país ni facturación, y no se inventan.</p>
+    <p>Health score, dirección y si se está torciendo.</p>
     <div class="searchbox">
       <input id="naturalSearch" placeholder="COMP_0725 o GROUP_0222" aria-label="Buscar">
       <button class="btn btn-lime" id="searchButton">Buscar ${k.n} empresas</button>
@@ -961,13 +1022,13 @@ function radar(){
     </div>
   </div>
   <div class="stats">
-    <article class="card stat"><div class="stat-head"><span>Universo</span><span class="pill pill-blue">Dataset</span></div><div class="stat-value">${k.n.toLocaleString('es')}</div><small>perfiles anónimos</small></article>
-    <article class="card stat"><div class="stat-head"><span>Sanas</span><span class="pill pill-good">≥ 52</span></div><div class="stat-value">${k.sano}</div><small>SALUDABLE + ESTABLE</small></article>
-    <article class="card stat"><div class="stat-head"><span>Llamadas</span><span class="pill pill-warn">Giro</span></div><div class="stat-value">${k.giro_sanas}</div><small>giro y score ≥ 55</small></article>
-    <article class="card stat"><div class="stat-head"><span>Deteriorando</span><span class="pill pill-bad">Dirección</span></div><div class="stat-value">${k.det}</div><small>tendencia, no quiebra</small></article>
+    <article class="card stat" style="--stat:#3d6bff"><div class="stat-head"><span>Universo</span><span class="pill pill-blue">Cartera</span></div><div class="stat-value">${k.n.toLocaleString('es')}</div><small>empresas</small></article>
+    <article class="card stat" style="--stat:#1f8a6e"><div class="stat-head"><span>Sanas</span><span class="pill pill-good">≥ 52</span></div><div class="stat-value">${k.sano}</div><small>SALUDABLE + ESTABLE</small></article>
+    <article class="card stat" style="--stat:#c47a1a"><div class="stat-head"><span>Llamadas</span><span class="pill pill-warn">Giro</span></div><div class="stat-value">${k.giro_sanas}</div><small>giro y score ≥ 55</small></article>
+    <article class="card stat" style="--stat:#e07a4a"><div class="stat-head"><span>Deteriorando</span><span class="pill pill-bad">Dirección</span></div><div class="stat-value">${k.det}</div><small>la nota aguanta, el rumbo no</small></article>
   </div>
   <div class="card table-card" style="margin-bottom:16px">
-    <div class="results-head" style="padding:14px 14px 0"><div><h2 id="resultTitle">${top.length} empresas</h2><p>Ordenadas por score. Click abre la ficha.</p></div></div>
+    <div class="results-head" style="padding:14px 14px 0"><div><h2 id="resultTitle">${top.length} empresas</h2><p>Ordenadas por health score.</p></div></div>
     <div class="table-wrap"><table>
       <thead><tr><th>Empresa</th><th>Health</th><th>Momentum</th><th>Nivel</th><th>Señal</th></tr></thead>
       <tbody id="screenerBody">${tableRows(top)}</tbody>
@@ -983,27 +1044,29 @@ function radar(){
   </div>
   <div class="card" id="q1">
     <h2>1. Quién está sano</h2>
-    <p class="note">Reconocer a la excepcionalmente sólida es tan útil como detectar a la que se hunde. Umbrales absolutos: SALUDABLE ≥68, ESTABLE ≥52.</p>
+    <p class="note">SALUDABLE ≥ 68 · ESTABLE ≥ 52</p>
     ${barsClase()}
     <table><thead><tr><th>Empresa</th><th>Score</th><th>Nivel</th><th>Dirección</th></tr></thead>
     <tbody>${sano.map(r=>`<tr class="click" data-id="${r.id}"><td>${r.id}</td><td>${r.s}</td><td>${pill(r.c)}</td><td class="${r.t}">${r.t}</td></tr>`).join('')}</tbody></table>
   </div>
   <div class="grid2" style="margin-top:14px">
     <div class="card" id="q2">
-      <h2>2. Quién está mejorando · las dos direcciones</h2>
-      <p class="note">Una que pasa de 45 a 65 puede ser la mejor apuesta. Eje X = nivel hoy. Eje Y = puntos de score suavizado en 6 meses.</p>
+      <h2>2. Quién está mejorando</h2>
       ${scatter()}
     </div>
     <div class="card">
       <h2>Hacia dónde va cada corriente</h2>
       ${flowsChart()}
-      <table><thead><tr><th>Mejora más</th><th>Pts/6m</th><th>Score</th></tr></thead>
-      <tbody>${mej.map(r=>`<tr class="click" data-id="${r.id}"><td>${r.id}</td><td class="MEJORANDO">${r.dir??'—'}</td><td>${r.s}</td></tr>`).join('')}</tbody></table>
     </div>
   </div>
+  <div class="card" style="margin-top:14px">
+    <div class="results-head"><div><h2>Quién mejora más</h2></div></div>
+    <table><thead><tr><th>Empresa</th><th>Pts / 6m</th><th>Score</th></tr></thead>
+    <tbody>${mej.map(r=>`<tr class="click" data-id="${r.id}"><td>${r.id}</td><td class="MEJORANDO">${r.dir??'—'}</td><td>${r.s}</td></tr>`).join('')}</tbody></table>
+  </div>
   <div class="card" id="q3" style="margin-top:14px">
-    <h2>3. Quién empieza a torcerse · score ≥ 55 + giro</h2>
-    <p class="note">De 82 a 68 sigue pareciendo sana. El punto rojo es el mes en que el comportamiento ya cambió. ${sanas.length} empresas. Click abre la ficha.</p>
+    <h2>3. Quién empieza a torcerse</h2>
+    <p class="note">${sanas.length} empresas con score ≥ 55 y giro</p>
     <div class="scroll"><table><thead><tr><th>Empresa</th><th>Score</th><th>Nivel</th><th>Naturaleza</th><th>Sigmas</th><th>Desde</th><th>Por qué</th></tr></thead>
     <tbody>${sanas.map(r=>`<tr class="click" data-id="${r.id}">
       <td>${r.id}</td><td>${r.s}</td><td>${pill(r.c)}</td>
@@ -1014,7 +1077,7 @@ function radar(){
   <div class="grid2" style="margin-top:14px">
     <div class="card" id="q4">
       <h2>4. Bache o caída</h2>
-      <p class="note">Un mes malo de caja no es un deterioro estructural. Validado contra el score a +6 meses.</p>
+      <p class="note">Un mes malo no es lo mismo que una caída que se sostiene</p>
       <div class="kpis">
         <div><div class="kpi">${k.bache_l}</div><div class="sub">bache en la lista (rebota +4,8 pts)</div></div>
         <div><div class="kpi">${k.caida_l}</div><div class="sub">caída estructural (sigue −1,8 pts)</div></div>
@@ -1024,13 +1087,16 @@ function radar(){
     </div>
     <div class="card" id="q6">
       <h2>6. Cuándo se vio venir</h2>
-      <p class="note">Detectar el mes que pasa no vale. Mediana de antelación ${k.ant_med??'—'} meses; ${k.gan_med??'—'} meses ganados a la capa de nivel.</p>
+      <p class="note">Mediana de antelación: ${k.ant_med??'—'} meses</p>
       <table><thead><tr><th>Empresa</th><th>Meses antes</th><th>Score</th></tr></thead>
       <tbody>${ant.map(r=>`<tr class="click" data-id="${r.id}"><td>${r.id}</td><td>${r.ant}</td><td>${r.s} ${pill(r.c)}</td></tr>`).join('')}</tbody></table>
     </div>
   </div>
-  <p class="note" id="q5" style="margin-top:12px">La pregunta 5 (por qué ha cambiado) se responde en la ficha: 6 ejes + motivo. Click en cualquier fila.</p>
-  <div class="disclosure"><strong>Dato del reto.</strong> Los IDs son anónimos. No hay nombres comerciales, sector, país ni rango de facturación: no se fabrican. El score lee caja y facturas.</div>`;
+  <div class="card" id="q5" style="margin-top:14px">
+    <div class="card-head"><div><h2>5. Por qué ha cambiado</h2><p>Seis ejes de tesorería. El peso es lo que aporta cada uno al Health Score.</p></div>
+      <button type="button" class="btn" id="goto-metodo">Ver métricas</button></div>
+    <div class="signals" style="margin:0">${D.ejes.map(([k,nom,w])=>`<article class="card signal" style="min-height:88px;padding:16px 18px"><div class="signal-top">${nom}</div><div class="signal-score" style="font-size:28px;margin:8px 0 0">${w}%</div></article>`).join('')}</div>
+  </div>`;
   function applyJump(kind){
     FILTRO=kind||'todas';
     const box=document.getElementById('naturalSearch');
@@ -1042,6 +1108,7 @@ function radar(){
     if(body) body.innerHTML=tableRows(list);
     if(title) title.textContent=list.length+' empresas';
   }
+  document.getElementById('goto-metodo')?.addEventListener('click',()=>show('metodo'));
   document.getElementById('searchButton')?.addEventListener('click',()=>applyJump(FILTRO));
   document.getElementById('naturalSearch')?.addEventListener('keydown',e=>{ if(e.key==='Enter') applyJump(FILTRO); });
   document.querySelectorAll('.chip[data-jump]').forEach(c=>c.onclick=()=>{
@@ -1094,50 +1161,77 @@ function monitor(){
 }
 
 function metodo(){
+  const ejes=[
+    {nom:'Deuda comercial',w:20,col:'#e07a4a',preg:'¿Pagáis a los proveedores?',mira:'Impagos de los últimos 3 meses. Si no hay, la deuda comercial frente a lo que entra.',por:'Es el 20% porque dejar de pagar es vuestra decisión y suele ser lo primero que se rompe.',alto:'Cola controlada',bajo:'Vencidos o deuda que crece'},
+    {nom:'Liquidez',w:18,col:'#3d6bff',preg:'¿El negocio genera caja?',mira:'Flujo operativo frente al tamaño (ingresos de 12 meses), sobre todo el trimestre.',por:'El 18%: un mes bueno no basta, tiene que aguantar el tamaño.',alto:'El flujo aguanta',bajo:'Entra menos de lo que toca'},
+    {nom:'Colchón',w:18,col:'#1f8a6e',preg:'¿Cuántos meses de aire hay?',mira:'Meses de gasto que cubre el flujo (6 meses). El saldo de caja solo entra si existe de verdad.',por:'El 18%: separa un bache de quedarse sin oxígeno.',alto:'Hay margen',bajo:'Un tropiezo se nota ya'},
+    {nom:'Trayectoria',w:18,col:'#c47a1a',preg:'¿Va a mejor o a peor?',mira:'Pendiente del flujo, si se recupera deuda a proveedores, ingresos del trimestre y si el problema se sostiene.',por:'El 18%: de aquí salen MEJORANDO y DETERIORANDO. No predice quiebra.',alto:'Rumbo al alza',bajo:'Rumbo a la baja'},
+    {nom:'Eficiencia',w:14,col:'#121a42',preg:'¿Se come el gasto la caja?',mira:'Burn de 3 meses. 1,0 es el equilibrio entre lo que entra y lo que sale.',por:'El 14%: un mes loco no explica una quema que se sostiene.',alto:'En equilibrio',bajo:'La quema sigue'},
+    {nom:'Cobro',w:12,col:'#6b7288',preg:'¿Os pagan a vosotros?',mira:'Facturas de clientes vencidas y devoluciones, últimos 3 meses.',por:'El 12%: que no os paguen anticipa que no podáis pagar. Pesa menos porque la decisión es del cliente.',alto:'Os pagan a tiempo',bajo:'La cola de cobro se alarga'}
+  ];
   document.getElementById('metodo').innerHTML=`
+  <div class="demo-say">
+    <h2>Lo que cuentas en la demo</h2>
+    <p>El Health Score es una nota de tesorería, de 0 a 100. Cada mes miramos seis cosas de caja y facturas, las mezclamos con un peso fijo, y juntamos los meses. Si falta un dato, ese trozo se apaga: no inventamos un 50. Luego leemos tres cosas: si está sana hoy, si mejora o empeora, y si se acaba de torcer.</p>
+  </div>
   <div class="card">
-    <h2>Las seis preguntas, dónde se contestan</h2>
-    <p class="note">El sistema no predice quiebras. Lee comportamiento en las dos direcciones, antes de que sea evidente.</p>
-    <table>
-      <tr><th>Pregunta</th><th>Campo</th><th>Dónde se ve</th></tr>
-      <tr><td>Quién está sano</td><td>clasificacion / score_final</td><td>Seis preguntas §1 · ficha bloque 1</td></tr>
-      <tr><td>Quién está mejorando</td><td>tendencia + pts/6m</td><td>Mapa nivel×dirección y curvas de corriente</td></tr>
-      <tr><td>Quién empieza a torcerse</td><td>giro + score ≥ 55</td><td>Lista de llamadas · punto rojo en la curva</td></tr>
-      <tr><td>Bache o caída</td><td>naturaleza_caida</td><td>§4 · validado a +6 meses</td></tr>
-      <tr><td>Por qué ha cambiado</td><td>6 ejes + motivo</td><td>Ficha de empresa</td></tr>
-      <tr><td>Cuándo se vio venir</td><td>meses_anticipacion</td><td>§6 y “visto N meses antes” en la ficha</td></tr>
-    </table>
+    <h2>1. Cómo se llega al número</h2>
+    <p class="lede">No es un modelo opaco. Es una receta.</p>
+    <div class="steps">
+      <article class="card step"><b>Paso A · el mes</b><p>Ese mes, cada eje saca una nota 0–100. Se mezclan así: 20 + 18 + 18 + 18 + 14 + 12. Eso es la nota del mes.</p></article>
+      <article class="card step"><b>Paso B · la historia</b><p>Se juntan los meses. Los recientes pesan más (cada 6 meses el peso se reduce a la mitad). Un pico de un mes no manda.</p></article>
+      <article class="card step"><b>Paso C · si hay poco dato</b><p>Si hay pocos meses, la nota se acerca a 54 (lo típico). Un único mes bueno no te convierte en SALUDABLE.</p></article>
+    </div>
+    <div class="pipe">
+      <span>Deuda 20%</span><span>Liquidez 18%</span><span>Colchón 18%</span><span>Trayectoria 18%</span><span>Eficiencia 14%</span><span>Cobro 12%</span><span>= nota del mes</span><span>→ meses recientes</span><span>→ Health Score</span>
+    </div>
   </div>
-  <div class="card" style="margin-top:12px">
-    <h2>Qué lee cada eje</h2>
-    <p class="note">Si falta la fuente, el eje se apaga. Nunca se imputa 50.</p>
-    <table>
-      <tr><th>Eje</th><th>Peso</th><th>Fuente</th></tr>
-      <tr><td>Deuda comercial</td><td>20%</td><td>impagos proveedores 3m, luego stock / ingresos</td></tr>
-      <tr><td>Liquidez</td><td>18%</td><td>flujo relativo 3m</td></tr>
-      <tr><td>Colchón</td><td>18%</td><td>flujo 6m / gasto; runway solo si hay foto de caja</td></tr>
-      <tr><td>Trayectoria</td><td>18%</td><td>Theil-Sen + momentum + persistencia</td></tr>
-      <tr><td>Eficiencia</td><td>14%</td><td>burn 3m (topado a 8x)</td></tr>
-      <tr><td>Cobro</td><td>12%</td><td>vencimientos sin cobrar 3m + refunds</td></tr>
-    </table>
+  <div class="card" style="margin-top:14px">
+    <h2>2. Qué hace el score</h2>
+    <div class="trio">
+      <article class="card step"><b>Ordena la cartera</b><p>Quién está sano hoy. SALUDABLE ≥ 68, ESTABLE ≥ 52, EN RIESGO ≥ 42, FRÁGIL ≥ 33, si no CRÍTICO.</p></article>
+      <article class="card step"><b>Mira las dos direcciones</b><p>No solo a las que se hunden. Una que pasa de 45 a 65 puede ser la mejor llamada. Una de 82 a 68 sigue pareciendo sana.</p></article>
+      <article class="card step"><b>Avisa antes</b><p>El giro detecta que se torció contra su propia historia. El plan de acciones sale de los ejes flojos, no de un LLM suelto.</p></article>
+    </div>
   </div>
-  <div class="card" style="margin-top:12px">
-    <h2>Agente para la pyme</h2>
-    <p class="note">Agente de Embat, no un LLM suelto. El prompt le da el health score
-    de esta ficha (cómo se calcula y qué ha dado), las herramientas ya corridas
-    (ficha, RAG sobre <code>docs/TEORIA_PYME.md</code>, catálogo) y le pide las
-    mismas secciones que ves: qué está pasando, tesorería, límites y acciones.
-    Impacto = eje de hoy. Cero puntos prometidos. Partner solo en <b>bache</b>.
-    <b>Qué vería el fondo</b> no lleva acciones.</p>
-    <h2>Bonus · proyección walk-forward del score</h2>
-    <p class="note">No predice quiebras. Predice el propio score a 1–3 meses: pendiente
-    Theil-Sen de los últimos 6–12 meses, aplicada desde el último score real
-    (no se vuelve a una recta global: un pico no fabrica un crash). La sombra es el
-    p80 del error walk-forward de esa misma regla. El motor no usa esta proyección.</p>
+  <div class="card" style="margin-top:14px">
+    <h2>3. Las seis métricas</h2>
+    <p class="note">En la ficha ves el número de cada una. Aquí es lo que dices al señalarlas.</p>
+    <div class="metric-grid">${ejes.map(e=>`
+      <article class="card metric">
+        <div class="metric-top"><h3>${e.nom}</h3><div class="metric-w" style="color:${e.col}">${e.w}%</div></div>
+        <div class="track"><i style="width:${e.w*5}%;background:${e.col}"></i></div>
+        <p><strong>${e.preg}</strong></p>
+        <p>${e.mira}</p>
+        <p>${e.por}</p>
+        <div class="hl"><span class="pill-good">${e.alto}</span><span class="pill-bad">${e.bajo}</span></div>
+      </article>`).join('')}</div>
   </div>
-    <p class="note">Fechas imposibles se reparan, ceros y p99 no entran, fuera de la ventana = NaN.
-    No se convierte todo a EUR: el tipo es 1 en el 64% de las cuentas no-EUR. Los ratios bastan.
-    Detalle en docs/LIMPIEZA.md.</p>
+  <div class="grid2" style="margin-top:14px">
+    <div class="card">
+      <h2>4. Cómo se lee en pantalla</h2>
+      <div class="scale">
+        <i style="width:33%;background:#e07a4a"></i>
+        <i style="width:9%;background:#c47a1a"></i>
+        <i style="width:10%;background:#f0c36a"></i>
+        <i style="width:16%;background:#3d6bff"></i>
+        <i style="width:32%;background:#1f8a6e"></i>
+      </div>
+      <div class="scale-leg">
+        <span>CRÍTICO &lt; 33</span><span>FRÁGIL 33</span><span>EN RIESGO 42</span><span>ESTABLE 52</span><span>SALUDABLE ≥ 68</span>
+      </div>
+      <p class="note" style="margin-top:12px">Son cortes fijos, no un ranking contra las demás empresas.</p>
+    </div>
+    <div class="card">
+      <h2>Las tres etiquetas de la ficha</h2>
+      <p><strong>Nivel</strong> = el Health Score. ¿Está sana hoy?</p>
+      <p><strong>Dirección</strong> = media de 3 meses de Trayectoria. &gt;58 MEJORANDO, &lt;42 DETERIORANDO. No es el cambio del 76. Por eso puede poner SALUDABLE + DETERIORANDO.</p>
+      <p><strong>Giro</strong> = se torció respecto a sí misma. Bache = suele rebotar. Caída = se sostiene.</p>
+    </div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <h2>Una frase si te preguntan el truco</h2>
+    <p class="lede">Si falta la fuente, el eje se apaga. Nunca rellenamos con 50. No prometemos puntos. No decimos que vaya a quebrar.</p>
   </div>`;
 }
 
@@ -1160,9 +1254,13 @@ function aiMsg(cls, html){
   const d=document.createElement('div'); d.className='message '+cls; d.innerHTML=html;
   box.appendChild(d); box.scrollTop=box.scrollHeight;
 }
-document.getElementById('aiButton').onclick=openAI;
+document.getElementById('btn-tellme')?.addEventListener('click', openAI);
 document.getElementById('aiClose').onclick=closeAI;
-document.getElementById('nav-ai').onclick=()=>{ show('empresa'); openAI(); };
+document.getElementById('brandHome')?.addEventListener('click',ev=>{ ev.preventDefault(); show('radar'); });
+window.addEventListener('scroll',()=>{
+  document.getElementById('siteHeader')?.classList.toggle('scrolled', window.scrollY>8);
+},{passive:true});
+show('radar');
 document.getElementById('aiSend').onclick=()=>{ show('empresa'); empresa(CURRENT); closeAI(); };
 document.querySelectorAll('[data-ai]').forEach(b=>b.onclick=async()=>{
   const r=D.companies.find(x=>x.id===CURRENT);

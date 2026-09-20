@@ -1,7 +1,7 @@
 """Sirve la interfaz. POST /api/brief usa la clave que pega el usuario en la UI.
 
     python -m src.brief_server
-    http://127.0.0.1:8765/
+    http://127.0.0.1:8775/
 """
 from __future__ import annotations
 
@@ -48,6 +48,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
+        if "html" in ctype:
+            self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(data)
 

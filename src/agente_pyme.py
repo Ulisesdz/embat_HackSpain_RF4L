@@ -41,6 +41,9 @@ de este caso ya viene en la ficha.
 - buscar_teoria: fragmentos de docs/TEORIA_PYME.md que encajan con esta ficha.
 - proponer_acciones: tipos del catálogo (empresa / Embat / partner). No hay marketplace.
 - estimar_impacto: eje de hoy y qué comportamiento lo movería. Cero puntos prometidos.
+Si la teoría cita algo de la plataforma Embat (posición de caja, previsión,
+deuda, confirming/factoring como visibilidad, contrapartes), podéis
+decírselo al dueño. No inventéis un préstamo, un tipo ni una concesión.
 
 ## Acciones que puedes tomar
 Solo ids del catálogo que te pasan. No inventes un préstamo, un producto ni
@@ -70,6 +73,8 @@ Reglas:
 - Si un campo de la ficha es null, no lo menciones.
 - No llames EBITDA a la caja.
 - Castellano, vosotros. Máximo 90 palabras por situacion / tesoreria / limites; 40 en para_la_pyme.
+- situacion: 2 a 4 frases. Nunca solo «Vuestra salud es de N». Nivel, tendencia y el eje que tira.
+- tesoreria y acciones[] no pueden ir vacíos si el catálogo trajo ids.
 - Sin markdown.
 """
 
@@ -150,26 +155,37 @@ def _chunks():
                 continue
             cuerpo.append(line)
         texto = " ".join(x.strip() for x in cuerpo if x.strip())
-        out.append({"id": titulo, "tags": tags, "texto": texto[:700]})
+        out.append({"id": titulo, "tags": tags, "texto": texto[:900]})
     return out
 
 
 _CHUNKS = None
 
 
-def buscar_teoria(query, k=3):
+def buscar_teoria(query, k=5):
     global _CHUNKS
     if _CHUNKS is None:
         _CHUNKS = _chunks()
     q = _tok(query)
     scored = []
     for ch in _CHUNKS:
-        bag = _tok(ch["id"] + " " + ch["tags"] + " " + ch["texto"])
-        n = len(q & bag)
+        head = _tok(ch["id"] + " " + ch["tags"])
+        body = _tok(ch["texto"])
+        n = 2 * len(q & head) + len(q & body)
         if n:
             scored.append((n, ch))
     scored.sort(key=lambda x: -x[0])
     return [c for _, c in scored[:k]]
+
+
+_TEORIA_EJE = {
+    "colchon": "caja saldo cuentas barrido visibilidad runway tesoreria",
+    "liquidez": "flujo prevision tesoreria descubierto caja",
+    "deuda_comercial": "proveedores pagos confirming cola",
+    "cobro_clientes": "cobro factoring clientes dso facturas",
+    "eficiencia": "burn deuda intereses comisiones recortar",
+    "trayectoria": "pendiente watchlist prevision",
+}
 
 
 def query_ficha(f):
@@ -177,8 +193,22 @@ def query_ficha(f):
             f.get("naturaleza") or "", f.get("confianza") or ""]
     bits += [x.get("eje") or "" for x in (f.get("ejes_debiles") or [])]
     bits += [x.get("etiqueta") or "" for x in (f.get("ejes_debiles") or [])]
+    for x in f.get("ejes_debiles") or []:
+        bits.append(_TEORIA_EJE.get(x.get("eje") or "", ""))
     if f.get("giro"):
         bits.append("giro")
+    if f.get("confianza") == "baja":
+        bits.append("visibilidad conectar cuentas")
+    if f.get("naturaleza") == "bache":
+        bits.append("partner linea confirming factoring")
+    if f.get("naturaleza") == "caida_estructural":
+        bits.append("estructural no deuda")
+    if f.get("tendencia") == "DETERIORANDO":
+        bits.append("watchlist pendiente tuerce")
+        if f.get("clasificacion") in ("SALUDABLE", "ESTABLE"):
+            bits.append("sana 82 68")
+    if f.get("clasificacion") in ("FRÁGIL", "CRÍTICO"):
+        bits.append("oxigeno quema cola")
     return " ".join(bits)
 
 

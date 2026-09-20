@@ -1,7 +1,8 @@
 # Limpieza de datos y política de moneda
 
-El sponsor pidió limpieza de verdad, no borrar columnas vacías. Cada decisión
-queda numerada en `data/features/cleaning_log.json`. Los CSV RAW no se tocan.
+Limpieza de verdad, no borrar columnas vacías. Cada decisión queda numerada
+en `data/features/cleaning_log.json`. Los CSV RAW no se tocan. El score está
+en [`SCORE_ENGINE.md`](SCORE_ENGINE.md).
 
 ## 1. Qué había sucio (medido, no intuido)
 

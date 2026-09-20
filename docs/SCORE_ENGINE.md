@@ -1,67 +1,51 @@
-# Motor de scoring — diseño final
+# Motor de scoring
 
-Documenta `score_engine.py`, `screen_signals.py` y `evaluate_anticipation.py`.
-Diccionario de features: `FEATURES.md`. Pipeline: `README_Data_Analysis.md`.
+Diseño de `src/score_engine.py`. Pesos y umbrales: `src/config.py`. Diccionario: [`FEATURES.md`](FEATURES.md). Limpieza: [`LIMPIEZA.md`](LIMPIEZA.md).
 
-El dataset no trae etiqueta de salud (impago real, concurso, default). El motor
-es un sistema de reglas sobre ratios, con pesos medidos (AUC / lift) y
-estimadores pensados para series cortas: Theil-Sen, z-score propio, percentil
-del mes y contracción hacia el prior. Cada número se puede explicar.
+El dataset no trae etiqueta de salud. El motor es reglas sobre ratios, con pesos medidos (AUC / lift) y estimadores para series cortas: Theil-Sen, percentil del mes, contracción hacia el prior. Cada número se puede explicar.
 
 ---
 
-## 1. Arquitectura
+## 1. Receta
 
 ```
-master_panel.csv
+panel mensual
    │
-   ├─ 6 EJES  → score mensual 0-100 (media ponderada)
-   │     cada eje con CASCADA de fuentes (precisa → disponible)
-   │
+   ├─ 6 EJES → nota 0–100 (media ponderada; eje sin fuente se apaga)
    ├─ MODULADORES (corrigen, no puntúan)
-   │     concentración · apalancamiento · volatilidad · antigüedad del impago
-   │
-   ├─ AGREGACIÓN   media exponencial (recencia × confianza × cobertura)
-   │     + CONTRACCIÓN hacia el prior según evidencia
-   │
-   ├─ TRES SEÑALES
-   │     NIVEL        el problema ya está aquí
-   │     COLA         anticipación contra eventos de severidad
-   │     GIRO PROPIO  "de 82 a 68": se torció respecto a sí misma
-   │
-   └─ VISTA DE GRUPO   agregación encima, nunca al revés
+   ├─ AGREGACIÓN  recencia × confianza × cobertura  (semivida 6 meses)
+   ├─ CONTRACCIÓN hacia el prior 54,41 si hay poca evidencia
+   └─ TRES SEÑALES   nivel · cola · giro propio
 ```
 
-Calibraciones en `model/`: `pctl_reference.json` y `prior_contraccion.json`.
-Borrarlas recalibra el sistema.
+Calibración en `model/` (`pctl_reference.json`, `prior_contraccion.json`). Borrarlas recalibra.
 
-Salidas: `scores_mensuales.csv`, `scores_finales.csv`, `scores_grupo.csv`,
-`score_explanations.json`, `anticipation_report.csv`.
+```
+pip install -r requirements.txt
+python -m src.run          # features → validador → score → anticipación → monitor → dashboard
+python -m src.brief_server # http://127.0.0.1:8775/
+```
+
+`evaluate_anticipation.py` va después del motor: mira al futuro. Si viviera dentro, el score dejaría de ser causal. `screen_signals.py` es calibración; no entra en `src.run`.
 
 ---
 
 ## 2. Pesos
 
+Medidos en `screen_signals.py` (filas aún aceptables, horizonte 12 meses).
+
 | Eje | Peso | Por qué |
 |---|---|---|
-| `deuda_comercial` | 0,20 | Predictor más fuerte: AUC 0,83 y lift 4,11 en su decil adverso sobre impago severo. No pagar a un proveedor es decisión propia. |
-| `liquidez` | 0,18 | Flujo / tamaño. Normalizado por `ingresos_12m_avg`. |
-| `colchon` | 0,18 | Meses que aguanta. Absorbe la volatilidad (mejor predictor único de asfixia, AUC 0,71). |
-| `eficiencia` | 0,14 | `burn_rate`: 1,0 es el equilibrio. Lift 3,46 sobre asfixia. |
-| `cobro_clientes` | 0,12 | Contagio: que no te paguen anticipa que no pagues (AUC 0,72). Pesa menos que proveedores. |
-| `trayectoria` | 0,18 | Dirección para MEJORANDO / DETERIORANDO. AUC 0,49 sobre eventos: no se presenta como predictor. |
+| Deuda comercial | 20% | Predictor más fuerte (AUC 0,83). No pagar es decisión propia |
+| Liquidez | 18% | Flujo / tamaño (`ingresos_12m_avg`) |
+| Colchón | 18% | Meses que aguanta. Absorbe la volatilidad (AUC 0,71 sobre asfixia) |
+| Trayectoria | 18% | Dirección para MEJORANDO / DETERIORANDO. AUC 0,49: no se vende como predictor |
+| Eficiencia | 14% | Burn. 1,0 = equilibrio. Lift 3,46 sobre asfixia |
+| Cobro | 12% | Contagio (AUC 0,72). Pesa menos: decide el cliente |
 
-`screen_signals.py` calcula AUC y lift sobre filas donde el nivel aún es
-aceptable, horizonte 12 meses. Los números de la tabla salen de ahí.
+Si el peso cubierto del mes < 55%, el mes es `NaN` (NO EVALUABLE). Nunca se imputa 50.
 
-**Apalancamiento no es eje.** El snapshot de deuda cubre el 1,2% de las filas.
-Es un modulador de ±8 puntos: primero `debt_service` (718 empresas, todos los
-meses); si no hay pagos, la foto de `deuda_sobre_ingresos` solo el mes del
-snapshot. `caja_negativa_flag` resta 4 puntos **solo** cuando vale 1. NaN no
-es negativo.
-
-Los z-scores no disparan alerta (AUC 0,44–0,57). Describen “fuera de lo
-habitual” en la trayectoria y en las explicaciones.
+**Apalancamiento no es eje.** El snapshot de deuda cubre el 1,2% de las filas. Modula ±8 pts (`debt_service` todos los meses; foto de deuda solo su mes). `caja_negativa_flag` resta 4 pts solo cuando vale 1. NaN no penaliza.
 
 ---
 
@@ -69,241 +53,146 @@ habitual” en la trayectoria y en las explicaciones.
 
 Cada eje usa la fuente más precisa que exista. Solo se apaga si no hay ninguna.
 
-| Eje | 1ª opción | 2ª | 3ª |
+| Eje | 1ª | 2ª | 3ª |
 |---|---|---|---|
-| `liquidez` | `flujo_relativo_3m` | `flujo_relativo` del mes | — |
-| `colchon` | `colchon_flujo_meses` | `runway_meses` | — |
-| `deuda_comercial` | `pct_impagos_prov_3m` | `stock_prov_sobre_ingresos` | “ha comprado y no debe nada vencido” |
-| `cobro_clientes` | `pct_clientes_morosos_3m` | `stock_clientes_sobre_ingresos` | “ha vendido y no le deben nada vencido” |
-| `eficiencia` | `burn_rate_3m_avg` | `burn_rate` del mes | — |
-| `trayectoria` | ≥1 de 4 señales direccionales | — | — |
+| Deuda comercial | `% impagos proveedores 3m` | stock vencido / ingresos | ha comprado y no debe |
+| Liquidez | flujo relativo 3m | flujo del mes | — |
+| Colchón | colchón de flujo 6m | runway (solo foto de caja) | — |
+| Trayectoria | ≥1 de 3 señales + persistencia | — | — |
+| Eficiencia | burn 3m | burn del mes | — |
+| Cobro | `% vencido sin cobrar 3m` | stock clientes / ingresos | ha vendido y no le deben |
 
-Stock cero con historial de compras/ventas es un dato, no un hueco. Por eso
-existen `compras_acum` y `ventas_acum`.
+Stock 0 con historial de compras/ventas es un dato, no un hueco.
 
-Resultado: mediana de 19 meses evaluados de 25; 67,6% de filas-mes con score;
-peso cubierto medio 0,685; 6 empresas NO EVALUABLE; 1.169 aptas para ranking.
-
-Si el peso cubierto queda bajo 0,55, el mes es `NaN`. No se imputa 50.
+Resultado de la última corrida: mediana 19 meses evaluados de 25; 67,6% de filas-mes con score; 6 empresas NO EVALUABLE; 1.169 aptas para ranking.
 
 ---
 
-## 4. Eje de trayectoria
+## 4. Trayectoria
 
-Cada señal se convierte en intensidad `[-1, +1]` dividiéndola por su saturación.
+Cada señal se convierte en intensidad `[-1, +1]` (tope = saturación). Un outlier no manda.
 
 | Componente | Peso | Señal | Saturación |
 |---|---|---|---|
-| `pendiente_flujo` | 0,30 | `flujo_pendiente_robusta_6m` (Theil-Sen) | 10 pp de ingresos/mes |
-| `deuda_comercial_dir` | 0,25 | `recuperacion_stock_prov` | 0,5 meses de ingresos |
-| `ingresos_momentum` | 0,20 | `ingresos_momentum_3m` | ±30% trimestral |
-| `anomalia` | 0,15 | `z_caja_ingresos`, `z_stock_prov_sobre_ingresos` | 2 σ |
-| `persistencia` | 0,10 | flags sostenidos 3 meses | solo penaliza |
+| Pendiente del flujo | 35% | Theil-Sen 6m | 10 pp de ingresos / mes |
+| Deuda a proveedores | 30% | recuperación del stock | 0,5 meses de ingresos |
+| Ingresos | 25% | momentum trimestral | ±30% |
+| Persistencia | 10% | flags sostenidos 3 meses | solo penaliza |
 
-`score_trayectoria = 50 + 50 × dirección × amortiguación`, amortiguación
-0,50–1,00 según volatilidad. Simétrico: misma sensibilidad a mejora y a
-deterioro.
+```
+score_trayectoria = 50 + 50 × dirección × amortiguación
+```
 
-La persistencia no activa el eje sola (los flags existen en el 100% de las
-filas). Hace falta al menos una de las cuatro señales informativas.
+Amortiguación 0,50–1,00 según volatilidad. Simétrico: misma sensibilidad al alza y a la baja. La persistencia **no activa el eje sola**.
 
-La etiqueta `tendencia` es la media de 3 meses de `score_trayectoria`:
-\>58 MEJORANDO, \<42 DETERIORANDO. No es el delta del score compuesto: un
-dato nuevo movería el compuesto sin que la empresa haya cambiado de rumbo.
+`tendencia` = media de 3 meses de `score_trayectoria`: >58 MEJORANDO, <42 DETERIORANDO. No es el delta del score compuesto: un dato nuevo movería el compuesto sin que la empresa haya cambiado de rumbo. Por eso una ficha puede ser **SALUDABLE + DETERIORANDO**.
 
 ---
 
 ## 5. Moduladores
 
-| Modulador | Tope | Lógica |
+Corrigen. No puntúan solos.
+
+| Modulador | Tope | Dónde |
 |---|---|---|
-| Concentración | −10 pts | Solo si el eje ya está bajo 60 |
-| Antigüedad del impago | −15 pts | Proporcional a `share_stock_*_antiguo` |
-| Volatilidad del flujo | −14 pts | Sobre el colchón |
-| Runway real | ±12 pts | Sobre el colchón, **por percentil** (mediana de runway = 0,49 meses) |
-| Apalancamiento | ±8 pts | Sobre el score final; snapshot o `debt_service` |
+| Antigüedad del impago (>90 días) | −15 pts | deuda / cobro |
+| Volatilidad del flujo | −14 pts | colchón |
+| Runway real (percentil) | ±12 pts | colchón, solo si hay foto de caja |
+| Recibos devueltos | −12 pts | cobro |
+| Concentración de contraparte | −10 pts | solo si el eje ya está < 60 |
+| Apalancamiento + caja negativa | ±8 / −4 pts | score del mes |
 
 ---
 
-## 6. Agregación y contracción
+## 6. Agregación
 
-Peso mensual = recencia (semivida 6 meses) × confianza × cobertura.
+Peso de cada mes = recencia (semivida 6) × confianza × cobertura.
 
 ```
-score_final = (evidencia × score_bruto + k × prior) / (evidencia + k)
+score_final = (evidencia × score_bruto + 0,75 × 54,41) / (evidencia + 0,75)
 ```
 
-`k = 0,75`, prior = **54,41** (mediana de empresas con ≥12 meses, 798 casos).
-`evidencia` es la suma de pesos mensuales, tope ~7,5. `score_bruto` se guarda
-para auditar cuánto contrajo cada caso.
+El prior 54,41 es la mediana de empresas con ≥12 meses (798). Un mes único no saca 95.
 
-Un mes único dejaba un 95 SALUDABLE. Con la contracción cae a ~60.
+Umbrales **absolutos** (misma empresa, misma nota, aunque cambie el resto de la muestra):
 
-### Umbrales (absolutos)
-
-| Clase | Umbral | Población |
+| Clase | Umbral | Empresas |
 |---|---|---|
 | SALUDABLE | ≥ 68 | 229 |
-| ESTABLE | 52 – 68 | 538 |
-| EN RIESGO | 42 – 52 | 315 |
-| FRÁGIL | 33 – 42 | 132 |
+| ESTABLE | 52–68 | 538 |
+| EN RIESGO | 42–52 | 315 |
+| FRÁGIL | 33–42 | 132 |
 | CRÍTICO | < 33 | 66 |
 | NO EVALUABLE | sin evidencia | 6 |
 
-Media 55,4, mediana 55,5, recorrido 16,22–87,81. Nadie llega a 0 ni a 100:
-el agregado exige consistencia.
+Media 55,4. Nadie llega a 0 ni a 100: hace falta consistencia.
 
 ---
 
-## 7. Tres señales, no una alerta
+## 7. Tres señales
 
-- **Nivel** — `score_mensual < 42`. Actuar hoy. No anticipa.
-- **Cola** — la empresa **aún no** ha caído (`score_mensual ≥ 42`) y acumula
-  disparadores de percentil adverso. Es la capa que compra tiempo.
-- **Giro** — movimiento contra la volatilidad propia del score (mediana móvil
-  de 3 meses, disparo en σ propias). Cierra el caso «82→68».
+- **Nivel** — `score_mensual < 42`. Actuar hoy.
+- **Cola** — aún no ha caído y acumula percentiles adversos. Compra tiempo.
+- **Giro** — caída contra la σ propia del score (mediana 3m). Cierra el caso «82 → 68»: sigue pareciendo sana frente a la cartera.
 
-Los disparadores de cola salen de `screen_signals.py`. Percentil, no umbral
-absoluto: varias señales no son monótonas (`flujo_relativo_3m` AUC 0,52 y
-lift 3,26 en el decil adverso).
+Los canales de cola salen de `screen_signals.py`. Percentil, no umbral absoluto (varias señales no son monótonas). Disparo al 55% del peso **disponible** en esa fila, sostenido 2 meses.
 
-**Canal de impago comercial** (AUC 0,767, lift 3,88):
+`evaluate_anticipation.py`, horizonte 12 meses, evento = 3 meses consecutivos de severidad:
 
-| Disparador | Umbral | Peso |
-|---|---|---|
-| `pctl_stock_prov_sobre_ingresos` | ≤ 0,20 | 3,0 |
-| `pctl_stock_clientes_sobre_ingresos` | ≤ 0,20 | 2,0 |
-| `pctl_recuperacion_stock_prov` | ≤ 0,10 | 2,0 |
-| `pctl_clientes_morosos_3m` | ≤ 0,20 | 1,5 |
-| `persistente_flag_stock_prov_antiguo` | binario | 1,5 |
+**Asfixia de caja** (tasa base 12,3%): la cola gana **2 meses** al nivel y ve eventos que el nivel no ve. Lift combinado ~1,44.
 
-**Canal de asfixia de caja** (AUC 0,680, lift 3,03):
+**Impago severo** (tasa base 34,1%): el nivel es más tautológico (el evento se define sobre el mismo stock). La cola aporta +1 mes.
 
-| Disparador | Umbral | Peso |
-|---|---|---|
-| `pctl_flujo_volatilidad_6m` | ≤ 0,20 | 3,0 |
-| `pctl_burn_rate_3m` | ≤ 0,20 | 2,5 |
-| `pctl_flujo_relativo_3m` | ≤ 0,10 | 2,0 |
-| `pctl_colchon_flujo_meses` | ≤ 0,20 | 2,0 |
-| `pctl_flujo_pendiente_robusta_6m` | ≤ 0,10 | 1,5 |
-
-Un canal dispara al superar el 55% del peso **disponible** en esa fila, y se
-exige sostenimiento 2 meses.
-
-`evaluate_anticipation.py`, horizonte 12 meses, evento = 3 meses consecutivos
-por encima del umbral de severidad:
-
-**Asfixia de caja** (tasa base 12,3%)
-
-| Señal | Se activa en | Recall | Precisión | Lift | Antelación |
-|---|---|---|---|---|---|
-| Nivel | 53,9% | 62,7% | 16,7% | 1,36 | 4,0 m |
-| Cola | 39,7% | 44,9% | 18,6% | 1,52 | 3,0 m |
-| Combinada | 64,4% | 88,6% | 17,6% | 1,44 | 4,0 m |
-
-La cola gana **2 meses de mediana** al nivel y ve 41 eventos que el nivel no
-ve nunca.
-
-**Impago severo** (tasa base 34,1%): el nivel es mejor (el evento se define
-sobre el mismo stock). La cola aporta +1 mes y 12 eventos únicos.
-
-El giro **no** se fusiona con los canales: metido dentro, el lift de cola
-caía de 1,52 a 1,04. Responde a otra pregunta (“¿esta caída se sostiene?”)
-y se valida contra el score futuro, no contra asfixia.
-
----
-
-## 8. Las seis preguntas
-
-| Pregunta | Dónde | Estado |
-|---|---|---|
-| Quién está sano | `clasificacion` | 229 / 538 / 315 / 132 / 66 / 6 |
-| Quién está mejorando | `tendencia` | 262 MEJORANDO · 398 DETERIORANDO · 611 ESTABLE |
-| Quién empieza a torcerse | `senal_giro` | 624 con giro; **420 llamadas** (`score_final` ≥ 55) |
-| Bache o caída | `naturaleza_caida` | Bache +4,69 a 6 m (52% recupera); caída −1,66 (33% sigue) |
-| Por qué ha cambiado | `motivo_cambio`, `aporte_*` | 17.744 filas-mes; 5,5% dominado por dato nuevo |
-| Cuándo se vio venir | `meses_anticipacion` | Cola vs nivel: +2 m asfixia, +1 m impago |
-
-`alerta_temprana` (1.111) es nivel **o** cola: recall, no la lista de ventas.
-El dashboard pinta 420.
-
-### Giro autorreferenciado
-
-La empresa mediana recorre 41,7 puntos entre máximo y mínimo. “Ha caído 14”
-solo significa algo contra su propia σ. Se suaviza con mediana móvil de 3
-meses. Cobertura del caso 82→68: 30,4% (base poblacional 4,9%).
+El giro **no** se mete en los canales: el lift de cola caía de 1,52 a 1,04. Responde a otra pregunta («¿esta caída se sostiene?»).
 
 ### Bache o caída
 
-Desenlace = ¿el score suavizado sigue igual o peor 6 meses después?
-Tasa base de no recuperación 38,5%. Criterios: volatilidad propia baja,
-`cambio_real` muy negativo, deuda comercial vencida viva. No se usan
-`score_mensual` ni `colchon_flujo_meses`: predicen por reversión a la media
-y sesgarían contra las sanas.
+Desenlace = ¿el score suavizado sigue igual o peor 6 meses después? Criterios: volatilidad propia baja, `cambio_real` muy negativo, deuda comercial viva. No se usan nivel ni colchón: predicen por reversión a la media.
 
-| Clase | n | Δ +3 m | Δ +6 m | Recupera | Sigue cayendo |
-|---|---|---|---|---|---|
-| `bache` | 1.256 | +4,65 | +5,28 | 54,8% | 18,2% |
-| `caida_estructural` | 270 | −1,93 | −2,54 | 33,3% | 36,3% |
+| Clase | A 6 meses | Recupera |
+|---|---|---|
+| Bache | +4,7 pts | ~52% |
+| Caída estructural | −1,7 pts | ~33% (y un tercio sigue cayendo) |
 
-### Atribución
+### Por qué ha cambiado
 
 ```
-efecto_nivel  = w_i,t-1 * (s_i,t - s_i,t-1)
-efecto_mezcla = (w_i,t - w_i,t-1) * s_i,t
+efecto_nivel  = w_i,t-1 × (s_i,t − s_i,t-1)     el eje se movió
+efecto_mezcla = (w_i,t − w_i,t-1) × s_i,t       llegó (o se fue) un dato
 ```
 
-`cambio_real` es comportamiento; `cambio_cobertura` es dato nuevo. Sin
-separarlos, “ha mejorado” sería “empezamos a verla”.
+`cambio_real` = comportamiento. `cambio_cobertura` = ahora la vemos. Sin eso, “ha mejorado” sería “empezamos a verla”.
 
-### Determinismo sobre empresas nuevas
+### Empresas nuevas
 
-La rejilla de 101 cuantiles (`pctl_reference.json`) y el prior congelado
-hacen que 70 empresas aisladas saquen el mismo `score_final`, clase y
-tendencia que dentro de las 1.286. Empates en percentil: punto medio, como
-`rank()`.
-
-`model/` vive fuera de `data/` porque `data/` está en `.gitignore`. Un clon
-limpio no debe recalibrar en silencio.
+La rejilla de cuantiles y el prior congelados hacen que puntuar empresas aisladas dé la misma clase y tendencia que dentro de las 1.286. `model/` vive fuera de `data/` a propósito: `data/` está en `.gitignore`.
 
 ---
 
-## 9. Empresa o grupo
+## 8. Empresa o grupo
 
-Cálculo por empresa. El grupo es un `groupby`.
+El cálculo es por empresa. El grupo es un `groupby` encima.
 
 | Medida | Valor |
 |---|---|
-| Varianza del score explicada por el grupo | 61,9% |
-| Recorrido máx–mín interno (mediana / p75) | 15,4 / 22,0 pts |
-| Grupos con MEJORANDO y DETERIORANDO a la vez | 85 (34,1%) |
-| El agregado esconde una filial en riesgo | 74 (29,7%) |
+| Grupos | 249 |
+| MEJORANDO y DETERIORANDO a la vez | 85 (34%) |
+| El agregado esconde una filial en riesgo | 74 (30%) |
 
-`scores_grupo.csv` publica `score_grupo`, `score_peor` / `empresa_peor`,
-`dispersion_interna` y `agregado_esconde_problema`. Toggle de vista, no de
-cálculo.
+Toggle de vista, no de cálculo.
 
 ---
 
-## 10. Limitaciones
+## 9. Fórmulas que usa el score
 
-1. No es validación fuera de muestra. El evento se define sobre las mismas
-   variables que alimentan la alerta.
-2. Lifts 1,4–1,5. Informa; no separa limpiamente.
-3. La deuda es casi ciega: un snapshot. `debt_service` cubre 718 empresas
-   todos los meses, pero no dice cuánto queda. `guarantee` / `confirming`
-   inflan la foto.
-4. Morosidad no fiable en el 55–61% de las filas (documentos que no son
-   factura). Por eso existen las cascadas.
-5. Prior y percentiles congelados sobre esta población. Recalibrar es
-   borrar `model/` a propósito.
+Todo es escala-libre. No hay umbral en euros.
 
----
+1. Flujo relativo = `flujo_neto / ingresos_12m_avg` (tope ±12).
+2. Burn = `gastos / ingresos`. Si ingresos = 0 → NaN. Tope 8×.
+3. Morosidad 3m = impagado as-of / facturas que **vencen** en esos 3 meses.
+4. Colchón = `suma(flujo_neto, 6m) / gastos_3m_avg`. Runway solo el mes de la foto de caja.
+5. Cobro = `pending_amount` ≈ 0. `payment_date` está llena en overdue: no es fecha de cobro.
 
-## 11. Producto encima del motor
+Flujo operativo: cuentas de tesorería. Fuera: `card`, `transfer`, inversión y categorías de deuda (esas van a `debt_service`).
 
-El agente (`src/agente_pyme.py`) no inventa un score. Corre herramientas:
-ficha cerrada, RAG sobre `docs/TEORIA_PYME.md` y catálogo de acciones
-(empresa / Embat / partner). El impacto es el eje de hoy. Una línea de
-partner solo encaja en bache. Se lanza desde la ficha
-(`python -m src.brief_server`).
+---S
