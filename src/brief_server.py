@@ -9,12 +9,18 @@ import json
 import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import pandas as pd
 
 import src.brief_cliente as brief
 import src.config as cfg
+from src.features.client_health_score.api import (
+    frontend_asset,
+    gemini_summary,
+    health_score_payload,
+    list_companies,
+)
 
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("BRIEF_PORT", "8765"))
@@ -48,18 +54,55 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(data)
 
     def do_GET(self):
-        path = urlparse(self.path).path
+        parsed = urlparse(self.path)
+        path = parsed.path
+        if path == "/api/health-score/companies":
+            try:
+                exp, _fin = _cache()
+                self._json(200, list_companies(exp))
+            except Exception as exc:
+                self._json(500, {"error": str(exc)})
+            return
+        if path == "/api/health-score":
+            company_id = str(parse_qs(parsed.query).get("company_id", ["COMP_0725"])[0])
+            if not company_id.startswith("COMP_"):
+                self._json(400, {"error": "company_id inválido"})
+                return
+            try:
+                exp, fin = _cache()
+                self._json(200, health_score_payload(company_id, exp, fin))
+            except KeyError:
+                self._json(404, {"error": f"sin ficha para {company_id}"})
+            except Exception as exc:
+                self._json(500, {"error": str(exc)})
+            return
+        if path == "/client/health-score" or path.startswith("/client/health-score/"):
+            asset = frontend_asset(path)
+            if asset:
+                self._file(*asset)
+            else:
+                self.send_error(404)
+            return
         if path in ("/", "/index.html", "/dashboard/", "/dashboard/index.html"):
+            asset = frontend_asset("/client/health-score")
+            if asset:
+                self._file(*asset)
+            else:
+                self.send_error(404)
+            return
+        if path in ("/legacy", "/legacy/", "/legacy/index.html"):
             self._file(cfg.DASHBOARD_PATH, "text/html; charset=utf-8")
             return
         self.send_error(404)
 
     def do_POST(self):
-        if urlparse(self.path).path != "/api/brief":
+        path = urlparse(self.path).path
+        if path not in ("/api/brief", "/api/health-score/summary"):
             self.send_error(404)
             return
         n = int(self.headers.get("Content-Length") or 0)
@@ -78,6 +121,21 @@ class Handler(BaseHTTPRequestHandler):
             if key.lower().startswith("bearer "):
                 key = key[7:].strip()
             key = key or None
+        if path == "/api/health-score/summary":
+            try:
+                exp, fin = _cache()
+                out = gemini_summary(cid, exp=exp, fin=fin, api_key=key)
+            except KeyError:
+                self._json(404, {"error": f"sin ficha para {cid}"})
+                return
+            except ValueError as exc:
+                self._json(400, {"error": str(exc)})
+                return
+            except RuntimeError as exc:
+                self._json(502, {"error": str(exc)})
+                return
+            self._json(200, out)
+            return
         try:
             exp, fin = _cache()
             out = brief.brief_api(
